@@ -144,9 +144,9 @@ struct netlist_t::port_t {
 
 class component_t {
 public:
-	void insert(double **, double *, double(**y)(netlist_t *, uint8_t *, double *), uint8_t *, netlist_t *, uint8_t , uint8_t *);
+	void insert(double **, double *, double(**y)(netlist_t *, uint8_t, double *), uint8_t *, netlist_t *, uint8_t, uint8_t *);
 	class voltage_t {
-		double voltage(netlist_t *, uint8_t *, double *);
+		double voltage(netlist_t *, uint8_t , double *);
 	}voltage;
 	class current_t {
 
@@ -166,10 +166,10 @@ public:
 	class diode_t {
 	public:
 		const uint8_t mna_add = 1;
-		double current(netlist_t *, uint8_t *, double *);
+		double current(netlist_t *, uint8_t , double *);
 	}diode;
 }component;
-void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_t *, double *), uint8_t *y_pos, netlist_t *source, uint8_t pos, uint8_t *hidden) {
+void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_t, double *), uint8_t *y_pos, netlist_t *source, uint8_t pos, uint8_t *hidden) {
 	switch (source->component_list[pos]){
 	case(netlist_t::component_order_t::voltage):
 		if (netlist_t::port_order_t::node_main) {
@@ -227,11 +227,11 @@ void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_
 		break;
 	}
 }
-double component_t::diode_t::current(netlist_t *source, uint8_t *pos, double *state) {
-	return (source->value[*pos].item[netlist_t::data_order_t::is])*(exp((state[source->port[*pos].item[netlist_t::port_order_t::node_main] - 1] - state[source->port[*pos].item[netlist_t::port_order_t::node_dest] - 1]) / source->value[*pos].item[netlist_t::data_order_t::vt]) - 1);
+double component_t::diode_t::current(netlist_t *source, uint8_t pos, double *state) {
+	return (source->value[pos].item[netlist_t::data_order_t::is])*(exp((state[source->port[pos].item[netlist_t::port_order_t::node_main] - 1] - state[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1]) / source->value[pos].item[netlist_t::data_order_t::vt]) - 1);
 }
-double component_t::voltage_t::voltage(netlist_t *source, uint8_t *pos, double *state) {
-	return source->value[*pos].item[netlist_t::data_order_t::voltage];
+double component_t::voltage_t::voltage(netlist_t *source, uint8_t pos, double *state) {
+	return source->value[pos].item[netlist_t::data_order_t::voltage];
 }
 
 class mna_t {
@@ -243,21 +243,25 @@ public:
 	netlist_t *source; 
 	double **g;
 	double **r;
-	double **j;
-	double **ji;
+	double **jn;
+	double **jni;
+	double **jni_old;
 	double *x;
 	double *x_old;
 	double *x_diff;
+	double *z;
 	double *s;
 	double *s_old;
 	double *s_diff;
-	double (**y)(netlist_t *, uint8_t *, double *);
+	double (**y)(netlist_t *ref, uint8_t pos, double *input);
 	netlist_t *y_source;
 	uint8_t *y_pos;
 	mna_t(netlist_t *, component_t *);
 	~mna_t(void);
 	void generate(void);//
 	void update(void);
+	void update_z(void);
+	void jacobian(void);
 };
 mna_t::mna_t(netlist_t *src, component_t *db) {
 	uint8_t pos = src->components;
@@ -289,10 +293,11 @@ mna_t::mna_t(netlist_t *src, component_t *db) {
 		x = new double[size];
 		x_old = new double[size];
 		x_diff = new double[size];
+		z = new double[size];
 		s = new double[size];
 		s_old = new double[size];
 		s_diff = new double[size];
-		y = new (double(**)(netlist_t *, uint8_t *, double *))[size];
+		y = new (double(**)(netlist_t *, uint8_t, double *))[size];
 		g = new double*[size];
 		pos = size;
 		while (pos) {
@@ -305,24 +310,30 @@ mna_t::mna_t(netlist_t *src, component_t *db) {
 			pos--;
 			r[pos] = new double[size];
 		}
-		j = new double*[size];
+		jn = new double*[size];
 		pos = size;
 		while (pos) {
 			pos--;
-			j[pos] = new double[size];
+			jn[pos] = new double[size];
 		}
-		ji = new double*[size];
+		jni = new double*[size];
 		pos = size;
 		while (pos) {
 			pos--;
-			ji[pos] = new double[size];
+			jni[pos] = new double[size];
+		}
+		jni_old = new double*[size];
+		pos = size;
+		while (pos) {
+			pos--;
+			jni_old[pos] = new double[size];
 		}
 		utils.zero_vect(x, size);
 		utils.zero_vect(y, size);
 		utils.zero_vect(s, size);
 		utils.zero_matrix(g, size, size);
 		utils.zero_matrix(r, size, size);
-		utils.zero_matrix(j, size, size);
+		utils.zero_matrix(jni, size, size);
 	}
 }
 mna_t::~mna_t() {
@@ -331,6 +342,7 @@ mna_t::~mna_t() {
 		delete[] x;
 		delete[] x_old;
 		delete[] x_diff;
+		delete[] z;
 		delete[] s;
 		delete[] s_old;
 		delete[] s_diff;
@@ -349,15 +361,21 @@ mna_t::~mna_t() {
 		pos = size;
 		while (pos) {
 			pos--;
-			delete[] j[pos];
+			delete[] jn[pos];
 		}
-		delete[] j;
+		delete[] jn;
 		pos = size;
 		while (pos) {
 			pos--;
-			delete[] ji[pos];
+			delete[] jni[pos];
 		}
-		delete[] ji;
+		delete[] jni;
+		pos = size;
+		while (pos) {
+			pos--;
+			delete[] jni_old[pos];
+		}
+		delete[] jni_old;
 	}
 }
 void mna_t::generate() {
@@ -373,7 +391,18 @@ void mna_t::generate() {
 	while (i) {
 		i--;
 		s[i] = 0;	//limpando para usar +=
-		y_temp = y[i](source, &i, x);
+		y_temp = y[i](source, y_pos[i], x);
+		j = size;
+		while (j) {
+			j--;
+			s_old[j] += y_temp - r[i][j] * x[j];
+		}
+	}
+	i = size;
+	while (i) {
+		i--;
+		s[i] = 0;	//limpando para usar +=
+		y_temp = y[i](source, y_pos[i], x);
 		j = size;
 		while (j) {
 			j--;
@@ -390,7 +419,7 @@ void mna_t::update() {
 	while (i) {
 		i--;
 		s[i] = 0;	//limpando para usar +=
-		y_temp = y[i](source, &i, x);
+		y_temp = y[i](source, y_pos[i], x);
 		j = size;
 		while (j) {
 			j--;
@@ -398,10 +427,43 @@ void mna_t::update() {
 		}
 	}
 }
+void mna_t::update_z() {
+	uint8_t i = size;
+	uint8_t j;
+	while (i) {
+		i--;
+		z[i] = 0;	//limpando para usar +=
+		j = size;
+		while (j) {
+			j--;
+			z[j] += r[i][j] * x[j];
+		}
+	}
+}
+void mna_t::jacobian() {
+	uint8_t i = size;
+	uint8_t j;
+	utils.copy_vect(jni, jni_old, size);
+	double *x_temp;
+	x_temp = new double[size];
+	while (i) {
+		i--;
+		j = size;
+		while (j) {
+			j--;
+			x_temp[j] = x[j] + MNA_JACOBIAN_STEP;
+			jn[i][j] = (y[i](source, y_pos[i], x_temp) - y[i](source, y_pos[i], x)) / MNA_JACOBIAN_STEP;
+			x_temp[j] = x[j];
+		}
+	}
+	math.invert(jn, jni, size);
+	delete[] x_temp;
+}
 
 class math_t {
 public:
-	void diff(double *, double *, double *, uint8_t);
+	void sub(double *, double *, double *, uint8_t);
+	void add(double *, double *, double *, uint8_t);
 	void invert(double **, double **, uint8_t);
 private:
 	int LUPDecompose(double **A, int N, double Tol, int *P);
@@ -409,10 +471,16 @@ private:
 	void LUPInvert(double **A, int *P, int N, double **IA);
 	double LUPDeterminant(double **A, int *P, int N);
 }math;
-void math_t::diff(double *a, double *b, double *out, uint8_t length) {
+void math_t::sub(double *a, double *b, double *out, uint8_t length) {
 	while (length) {
 		length--;
 		out[length] = a[length] - b[length];
+	}
+}
+void math_t::add(double *a, double *b, double *out, uint8_t length) {
+	while (length) {
+		length--;
+		out[length] = a[length] + b[length];
 	}
 }
 int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
