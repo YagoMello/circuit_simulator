@@ -4,6 +4,7 @@
 
 constexpr uint8_t NETLIST_PORT_MAX = 5;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
+constexpr double MNA_JACOBIAN_STEP = 1e-6;
 
 class utils_t {
 public:
@@ -242,8 +243,14 @@ public:
 	netlist_t *source; 
 	double **g;
 	double **r;
+	double **j;
+	double **ji;
 	double *x;
+	double *x_old;
+	double *x_diff;
 	double *s;
+	double *s_old;
+	double *s_diff;
 	double (**y)(netlist_t *, uint8_t *, double *);
 	netlist_t *y_source;
 	uint8_t *y_pos;
@@ -280,7 +287,11 @@ mna_t::mna_t(netlist_t *src, component_t *db) {
 			}
 		}
 		x = new double[size];
+		x_old = new double[size];
+		x_diff = new double[size];
 		s = new double[size];
+		s_old = new double[size];
+		s_diff = new double[size];
 		y = new (double(**)(netlist_t *, uint8_t *, double *))[size];
 		g = new double*[size];
 		pos = size;
@@ -294,18 +305,35 @@ mna_t::mna_t(netlist_t *src, component_t *db) {
 			pos--;
 			r[pos] = new double[size];
 		}
+		j = new double*[size];
+		pos = size;
+		while (pos) {
+			pos--;
+			j[pos] = new double[size];
+		}
+		ji = new double*[size];
+		pos = size;
+		while (pos) {
+			pos--;
+			ji[pos] = new double[size];
+		}
 		utils.zero_vect(x, size);
 		utils.zero_vect(y, size);
 		utils.zero_vect(s, size);
 		utils.zero_matrix(g, size, size);
 		utils.zero_matrix(r, size, size);
+		utils.zero_matrix(j, size, size);
 	}
 }
 mna_t::~mna_t() {
 	uint8_t pos = size;
 	if (size) {
 		delete[] x;
+		delete[] x_old;
+		delete[] x_diff;
 		delete[] s;
+		delete[] s_old;
+		delete[] s_diff;
 		delete[] y;
 		while (pos) {
 			pos--;
@@ -318,6 +346,18 @@ mna_t::~mna_t() {
 			delete[] r[pos];
 		}
 		delete[] r;
+		pos = size;
+		while (pos) {
+			pos--;
+			delete[] j[pos];
+		}
+		delete[] j;
+		pos = size;
+		while (pos) {
+			pos--;
+			delete[] ji[pos];
+		}
+		delete[] ji;
 	}
 }
 void mna_t::generate() {
@@ -325,22 +365,19 @@ void mna_t::generate() {
 	uint8_t pos = components;
 	uint8_t j;
 	double y_temp;
-
 	while (pos){
 		pos--;
 		component.insert(g, x, y, y_pos, source, pos, &hidden);
 	}
-
 	math.invert(g, r, size);
 	while (i) {
 		i--;
 		s[i] = 0;	//limpando para usar +=
-		x[i] = 0; //cond inicial
 		y_temp = y[i](source, &i, x);
 		j = size;
 		while (j) {
 			j--;
-			s[j] += x[j] - r[i][j] * y_temp;//tuderrado
+			s[j] += y_temp - r[i][j] * x[j];
 		}
 	}
 }
@@ -348,21 +385,23 @@ void mna_t::update() {
 	uint8_t i = size;
 	uint8_t j;
 	double y_temp;
+	utils.copy_vect(x, x_old, size);
+	utils.copy_vect(s, s_old, size);
 	while (i) {
 		i--;
-		j = size;
 		s[i] = 0;	//limpando para usar +=
 		y_temp = y[i](source, &i, x);
+		j = size;
 		while (j) {
 			j--;
-			s[j] += x[j] - r[i][j] * y_temp;
+			s[j] += y_temp - r[i][j] * x[j];
 		}
 	}
 }
 
 class math_t {
 public:
-	double diff(double(*func)(netlist_t::data_t*));
+	void diff(double *, double *, double *, uint8_t);
 	void invert(double **, double **, uint8_t);
 private:
 	int LUPDecompose(double **A, int N, double Tol, int *P);
@@ -370,17 +409,12 @@ private:
 	void LUPInvert(double **A, int *P, int N, double **IA);
 	double LUPDeterminant(double **A, int *P, int N);
 }math;
-double math_t::diff(double (*func)(netlist_t::data_t*)) {
-	
-	return 0.0;
+void math_t::diff(double *a, double *b, double *out, uint8_t length) {
+	while (length) {
+		length--;
+		out[length] = a[length] - b[length];
+	}
 }
-/* INPUT: A - array of pointers to rows of a square matrix having dimension N
- *        Tol - small tolerance number to detect failure when the matrix is near degenerate
- * OUTPUT: Matrix A is changed, it contains both matrices L-E and U as A=(L-E)+U such that P*A=L*U.
- *        The permutation matrix is not stored as a matrix, but in an integer vector P of size N+1
- *        containing column indexes where the permutation matrix has "1". The last element P[N]=S+N,
- *        where S is the number of row exchanges needed for determinant computation, det(P)=(-1)^S
- */
 int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
 
 	int i, j, k, imax;
@@ -426,9 +460,6 @@ int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
 
 	return 1;  //decomposition done 
 }
-/* INPUT: A,P filled in LUPDecompose; b - rhs vector; N - dimension
- * OUTPUT: x - solution vector of A*x=b
- */
 void math_t::LUPSolve(double **A, int *P, double *b, int N, double *x) {
 
 	for (int i = 0; i < N; i++) {
@@ -445,9 +476,6 @@ void math_t::LUPSolve(double **A, int *P, double *b, int N, double *x) {
 		x[i] = x[i] / A[i][i];
 	}
 }
-/* INPUT: A,P filled in LUPDecompose; N - dimension
- * OUTPUT: IA is the inverse of the initial matrix
- */
 void math_t::LUPInvert(double **A, int *P, int N, double **IA) {
 
 	for (int j = 0; j < N; j++) {
@@ -469,9 +497,6 @@ void math_t::LUPInvert(double **A, int *P, int N, double **IA) {
 		}
 	}
 }
-/* INPUT: A,P filled in LUPDecompose; N - dimension.
- * OUTPUT: Function returns the determinant of the initial matrix
- */
 double math_t::LUPDeterminant(double **A, int *P, int N) {
 
 	double det = A[0][0];
