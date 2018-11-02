@@ -213,7 +213,7 @@ void component_t::insert(double **g, double(**x)(netlist_t *, uint8_t, double *,
 		}
 		break;
 	case(netlist_t::component_order_t::current):
-
+		//remember to += memory (current) 
 		break;
 	case(netlist_t::component_order_t::resistor):
 		if (netlist_t::port_order_t::node_main) {
@@ -229,8 +229,6 @@ void component_t::insert(double **g, double(**x)(netlist_t *, uint8_t, double *,
 			if (netlist_t::port_order_t::node_main) {
 				g[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1][source->port[pos].item[netlist_t::port_order_t::node_main] - 1] = -1 / source->value[pos].item[netlist_t::data_order_t::resistance];
 			}
-			y[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = generic_op.copy_z;
-			f_netlist_pos[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = source->port[pos].item[netlist_t::port_order_t::node_dest] - 1;
 		}
 		break;
 	case(netlist_t::component_order_t::capacitor):
@@ -298,13 +296,13 @@ public:
 	uint8_t *f_netlist_pos;
 	mna_t(netlist_t *, component_t *);
 	~mna_t(void);
-	void generate(void);//
-	void update(void);
+	void generate(void);
 	void update_z(void);
 	double eval_row(uint8_t);
 	double eval_row(uint8_t, double *);
 	double* eval(double *);
-	void iterate(void);
+	void iterate_once(void);
+	void iterate_n(uint16_t);
 	double** jacobian(void);
 };
 mna_t::mna_t(netlist_t *src, component_t *db) {
@@ -431,6 +429,11 @@ void mna_t::generate() {
 		pos--;
 		component.insert(g, x, y, f_netlist_pos, source, pos, &hidden, f_memory);
 	}
+	pos = nodes;
+	while (pos){
+		pos--;
+		component.load_from_memory(x, pos);
+	}
 	math.invert(g, r, size);
 	while (i) {
 		i--;
@@ -451,23 +454,6 @@ void mna_t::generate() {
 		while (j) {
 			j--;
 			s[j] += y_temp - r[i][j] * x[j](source, f_netlist_pos[i], z, f_memory);
-		}
-	}
-}
-void mna_t::update() {
-	uint8_t i = size;
-	uint8_t j;
-	double x_temp;
-	double y_temp;
-	utils.copy_vect(s, s_old, size);
-	while (i) {
-		i--;
-		s[i] = 0;	//limpando para usar +=
-		y_temp = y[i](source, f_netlist_pos[i], s, f_memory);
-		j = size;
-		while (j) {
-			j--;
-			s[j] += y_temp - r[i][j] * x[j](source, f_netlist_pos[i], s, f_memory);
 		}
 	}
 }
@@ -530,12 +516,20 @@ double** mna_t::jacobian() {
 	delete[] s_temp;
 	return jn;
 }
-void mna_t::iterate() {
+void mna_t::iterate_once() {
 	double *s_new = new double[size];
+	double *z_new = new double[size];
 	eval(z);
 	jacobian();
-	math.sub(s, z, s_new, size);
+	utils.mult_matrix(r, &z, &z_new, (uint16_t)size, (uint16_t)1, (uint16_t)size);
+	math.sub(s, z_new, s_new, size);
 	delete[] s_new;
+}
+void mna_t::iterate_n(uint16_t n) {
+	while (n){
+		n--;
+		iterate_once();
+	}
 }
 
 class math_t {
