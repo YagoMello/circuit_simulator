@@ -143,11 +143,9 @@ struct netlist_t::port_t {
 
 class component_t {
 public:
-	void insert(double **, double *, double(**y)(netlist_t *, uint8_t *, double *), netlist_t *, uint8_t *, netlist_t *, uint8_t , uint8_t *);
+	void insert(double **, double *, double(**y)(netlist_t *, uint8_t *, double *), uint8_t *, netlist_t *, uint8_t , uint8_t *);
 	class voltage_t {
-		double voltage(double **arg) {
-			
-		}
+		double voltage(netlist_t *, uint8_t *, double *);
 	}voltage;
 	class current_t {
 
@@ -170,7 +168,7 @@ public:
 		double current(netlist_t *, uint8_t *, double *);
 	}diode;
 }component;
-void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_t *, double *), netlist_t *y_src, uint8_t *y_pos, netlist_t *source, uint8_t pos, uint8_t *hidden) {
+void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_t *, double *), uint8_t *y_pos, netlist_t *source, uint8_t pos, uint8_t *hidden) {
 	switch (source->component_list[pos]){
 	case(netlist_t::component_order_t::voltage):
 		if (netlist_t::port_order_t::node_main) {
@@ -218,9 +216,9 @@ void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_
 			g[source->port[pos].item[netlist_t::port_order_t::node_dest - 1]][*hidden] = -1;
 			g[*hidden][source->port[pos].item[netlist_t::port_order_t::node_dest - 1]] = -1;
 		}
-		if (netlist_t::port_order_t::node_main | netlist_t::port_order_t::node_dest) {
+		if (netlist_t::port_order_t::node_main || netlist_t::port_order_t::node_dest) {
 			y[*hidden] = diode.current;
-			
+			y_pos[*hidden] = pos;
 		}
 		hidden++;
 		break;
@@ -230,6 +228,9 @@ void component_t::insert(double **g, double *x, double (**y)(netlist_t *, uint8_
 }
 double component_t::diode_t::current(netlist_t *source, uint8_t *pos, double *state) {
 	return (source->value[*pos].item[netlist_t::data_order_t::is])*(exp((state[source->port[*pos].item[netlist_t::port_order_t::node_main] - 1] - state[source->port[*pos].item[netlist_t::port_order_t::node_dest] - 1]) / source->value[*pos].item[netlist_t::data_order_t::vt]) - 1);
+}
+double component_t::voltage_t::voltage(netlist_t *source, uint8_t *pos, double *state) {
+	return source->value[*pos].item[netlist_t::data_order_t::voltage];
 }
 
 class mna_t {
@@ -327,7 +328,7 @@ void mna_t::generate() {
 
 	while (pos){
 		pos--;
-		component.insert(g, x, y, y_source, y_pos,source, pos, &hidden);
+		component.insert(g, x, y, y_pos, source, pos, &hidden);
 	}
 
 	math.invert(g, r, size);
