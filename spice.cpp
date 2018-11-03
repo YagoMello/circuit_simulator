@@ -182,7 +182,6 @@ enum netlist_t::data_order_t : uint8_t{
 	open_loop_gain = 0,
 	//diode
 	is = 0,
-	vs,
 	vt,
 	//jfet
 
@@ -310,7 +309,7 @@ double component_t::copy_s(netlist_t *source, uint8_t pos, double *input, double
 	return input[pos];
 }
 double component_t::diode_vd(netlist_t *source, uint8_t pos, double *input, double *memory) {
-	return input[source->port[pos].item[netlist_t::port_order_t::node_main] - 1] - input[source->port[pos].item[netlist_t::port_order_t::node_main] - 1];
+	return input[source->port[pos].item[netlist_t::port_order_t::node_main] - 1] - input[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1];
 }
 double component_t::diode_r_current(netlist_t *source, uint8_t pos, double *input, double *memory) {
 	return (source->value[pos].item[netlist_t::data_order_t::is])*(exp((input[source->port[pos].item[netlist_t::port_order_t::node_main] - 1] - input[source->port[pos].item[netlist_t::port_order_t::node_dest] - 1]) / source->value[pos].item[netlist_t::data_order_t::vt]) - 1);
@@ -453,6 +452,7 @@ void mna_t::generate() {
 	pos = nodes;
 	while (pos){
 		pos--;
+		f_netlist_pos[pos] = pos;
 		component_t::insert_from_memory(x, pos);
 		component_t::insert_copy_s(y,pos);
 	}
@@ -527,6 +527,7 @@ void mna_t::iterate_once() {
 	utils_t::mult_mat_vect(r, z, z_new, (uint16_t)size, (uint16_t)size);
 	math.sub(s, z_new, s_new, size);
 	delete[] s_new;
+	delete[] z_new;
 }
 void mna_t::iterate_n(uint16_t n) {
 	while (n){
@@ -698,7 +699,7 @@ int main() {
 
 	mna_t solver(&net, &component);
 	solver.generate();
-	solver.iterate_n(100);
+	solver.iterate_n(1000);
 	cout << solver.s[0] << endl << solver.s[1] << endl << solver.s[2] << endl << solver.s[3] << endl << solver.s[4] << endl;
 	return 0;
 }
