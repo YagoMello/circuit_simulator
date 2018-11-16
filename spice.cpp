@@ -14,10 +14,11 @@
 constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
-constexpr double NOD_SUB_STEP = 1e-2;
-constexpr double NOD_JACOBIAN_STEP = 1e-6;
+constexpr double NOD_SUB_STEP = 1e-6;
+constexpr double NOD_JACOBIAN_STEP = 1e-12;
 constexpr uint16_t NOD_MAX_ITERATIONS = 10000;
-constexpr double NOD_CLOSE_ENOUGH = 1e-4;
+constexpr double NOD_CLOSE_ENOUGH = 1e-8;
+constexpr double MATH_INVERSE_TOL = 1e-14;
 constexpr double GMIN = 1e-10;
 
 //NODE_REF
@@ -424,10 +425,6 @@ nod_t::~nod_t() {
     delete[] NT1;
     delete[] U1;
     delete[] update_array_temp;
-    delete[] G;
-    delete[] R;
-    delete[] JN;
-    delete[] JNI;
 	uint8_t pos = dim;
 	if (dim) {
 		while (pos) {
@@ -509,16 +506,8 @@ double* nod_t::eval_f(double *yy, double *xx, double *output) {
 void nod_t::iterate(uint16_t k) {
     uint8_t not_done;
     uint8_t first_sub_step;
-    //S1_best
-    //FS1_best
     double LFS1_best;
-    //JNI
-    //T1
     double LT1;
-    //NT1
-    //U1
-    //S1
-    //FS1
     double LFS1;
     double lambda;
     eval_f(S0, X, FS0);
@@ -621,28 +610,27 @@ void nod_t::iterate(uint16_t k) {
                 if(utils_t::norm(U1, dim) >= NOD_SUB_STEP){
                     lambda /= 10;
 
-                    /*
+
                     if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
                         utils_t::copy_vect(S1, S1_best, dim);
                         utils_t::copy_vect(FS1, FS1_best, dim);
                         LFS1_best = LFS1;
-                    }*/
+                    }
                 }
                 else{
                     not_done = FALSE;
-                    math_t::sub(S0, U1, S0, dim);
 
-                    //if(first_sub_step){
+                    if(first_sub_step){
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
                         LFS0 = LFS1;
-                    //}
-                    /*else{
+                    }
+                    else{
                         utils_t::copy_vect(S1_best, S0, dim);
                         utils_t::copy_vect(FS1_best, FS0, dim);
                         LFS0 = LFS1_best;
-                    }*/
+                    }
                 }
             }
             else{
@@ -773,7 +761,7 @@ double** math_t::invert(double **in, double** out, uint8_t dim) {
 		A[pos] = new double[dim];
 	}
 	utils_t::copy_matrix(in, A, dim, dim);
-	math_t::LUPDecompose(A, dim, 0.001, P);
+	math_t::LUPDecompose(A, dim, MATH_INVERSE_TOL, P);
 	math_t::LUPInvert(A, P, dim, out);
 	pos = dim;
 	while (pos) {
@@ -791,7 +779,7 @@ int main() {
 	net.row[0].type = resistor;
 	net.row[1].type = resistor;
 	net.row[2].type = voltage_source;
-	net.row[3].type = fet_n;
+	net.row[3].type = resistor;
 	net.row[4].type = fet_n;
 
 	cout << "componentes adicionados" << endl;
@@ -799,40 +787,36 @@ int main() {
 	net.row[0].node[positive] = 1;
 	net.row[0].node[negative] = 2;
 
-	net.row[1].node[positive] = 1;
+	net.row[1].node[positive] = 2;
 	net.row[1].node[negative] = 3;
 
 	net.row[2].node[positive] = 1;
 	net.row[2].node[negative] = 0;
 
-	net.row[3].node[fet_source] = 0;
-	net.row[3].node[fet_drain] = 2;
-    net.row[3].node[fet_gate] = 3;
+	net.row[3].node[positive] = 3;
+	net.row[3].node[negative] = 0;
 
 	net.row[4].node[fet_source] = 0;
-	net.row[4].node[fet_drain] = 3;
+	net.row[4].node[fet_drain] = 2;
     net.row[4].node[fet_gate] = 3;
 
 	cout << "portas definidas" << endl;
 
-	net.row[0].value[resistance] = 1000;
-	net.row[1].value[resistance] = 1000;
-	net.row[2].value[voltage] = 5;
-	net.row[3].value[fet_w] = 1;
-	net.row[3].value[fet_l] = 1;
-	net.row[3].value[fet_kp] = 0.05;
-	net.row[3].value[fet_vt] = 0.85;
-	net.row[3].value[fet_lambda] = 0.015;
+	net.row[0].value[resistance] = 20e3;
+	net.row[1].value[resistance] = 150e3;
+	net.row[2].value[voltage] = 20;
+	net.row[3].value[resistance] = 100e3;
+
 	net.row[4].value[fet_w] = 1;
 	net.row[4].value[fet_l] = 1;
-	net.row[4].value[fet_kp] = 0.05;
-	net.row[4].value[fet_vt] = 0.85;
-	net.row[4].value[fet_lambda] = 0.015;
+	net.row[4].value[fet_kp] = 884.615384e-6;
+	net.row[4].value[fet_vt] = 3;
+	net.row[4].value[fet_lambda] = 0.004;
 
 	cout << "valores definidos" << endl;
 
 	nod_t solver(&net);
-	solver.iterate(20);
+	solver.iterate(10);
 	cout
 	<< "Va =     " << solver.S0[0] << endl
 	<< "Vb =     " << solver.S0[1] << endl
@@ -840,10 +824,11 @@ int main() {
 	<< "Is =     " << solver.S0[3] << endl
 	<< "LFS0 =   " << solver.LFS0  << endl
 	<< "G =      " << endl
-	<< solver.G[0][0] << "     " << solver.G[0][1] << "     " << solver.G[0][2] << "     " << solver.G[0][3] << endl
-	<< solver.G[1][0] << "     " << solver.G[1][1] << "     " << solver.G[1][2] << "     " << solver.G[1][3] << endl
-	<< solver.G[2][0] << "     " << solver.G[2][1] << "     " << solver.G[2][2] << "     " << solver.G[2][3] << endl
-	<< solver.G[3][0] << "     " << solver.G[3][1] << "     " << solver.G[3][2] << "     " << solver.G[3][3] << endl;
+	<< solver.R[0][0] << "     " << solver.R[0][1] << "     " << solver.R[0][2] << "     " << solver.R[0][3] << endl
+	<< solver.R[1][0] << "     " << solver.R[1][1] << "     " << solver.R[1][2] << "     " << solver.R[1][3] << endl
+	<< solver.R[2][0] << "     " << solver.R[2][1] << "     " << solver.R[2][2] << "     " << solver.R[2][3] << endl
+	<< solver.R[3][0] << "     " << solver.R[3][1] << "     " << solver.R[3][2] << "     " << solver.R[3][3] << endl;
+	getchar();
 	return 0;
 }
 
