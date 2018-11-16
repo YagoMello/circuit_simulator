@@ -1,11 +1,59 @@
-#include "stdafx.h"
+
 #include <iostream>
 #include <inttypes.h>
 #include <math.h>
 
-constexpr uint8_t NETLIST_PORT_MAX = 4;
+#ifndef TRUE
+#define TRUE 1
+#endif // TRUE
+
+#ifndef FALSE
+#define FALSE 0
+#endif // FALSE
+
+constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
-constexpr double MNA_JACOBIAN_STEP = 1e-6;
+constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
+constexpr double NOD_SUB_STEP = 1e-2;
+constexpr double NOD_JACOBIAN_STEP = 1e-6;
+constexpr uint16_t NOD_MAX_ITERATIONS = 10000;
+constexpr double NOD_CLOSE_ENOUGH = 1e-4;
+constexpr double GMIN = 1e-10;
+
+//NODE_REF
+//2 port
+constexpr uint8_t positive = 0;
+constexpr uint8_t negative = 1;
+//voltage_source trick
+constexpr uint8_t hidden = 2;
+//mosfet
+constexpr uint8_t fet_source = 0;
+constexpr uint8_t fet_drain = 1;
+constexpr uint8_t fet_gate = 2;
+
+//VALUE_REF
+//voltage_source
+constexpr uint8_t voltage = 0;
+//resistor
+constexpr uint8_t resistance = 0;
+//mosfet
+constexpr uint8_t fet_w = 0;
+constexpr uint8_t fet_l = 1;
+constexpr uint8_t fet_kp = 2;
+constexpr uint8_t fet_vt = 3;
+constexpr uint8_t fet_lambda = 4;
+
+//TYPE_REF
+constexpr uint16_t resistor = 0;
+constexpr uint16_t voltage_source = 1;
+constexpr uint16_t current_source = 2;
+constexpr uint16_t capacitor = 3;
+constexpr uint16_t inductor = 4;
+constexpr uint16_t diode = 5;
+constexpr uint16_t bjt_npn = 6;
+constexpr uint16_t bjt_pnp = 7;
+constexpr uint16_t fet_n = 8;
+constexpr uint16_t fet_p = 9;
 
 class utils_t {
 public:
@@ -14,86 +62,67 @@ public:
 	template <typename T> static void zero_vect(T *, uint16_t);
 	template <typename T> static void zero_matrix(T**, uint16_t, uint16_t);
 	template <typename T> static T mult_matrix_single_row_col(T**, T**, uint16_t, uint16_t, uint16_t);
-	template <typename T> static void mult_matrix(T**, T**, T**, uint16_t, uint16_t, uint16_t);
+	template <typename T> static void mult_mat_mat(T**, T**, T**, uint16_t, uint16_t, uint16_t);
 	template <typename T> static void mult_mat_vect(T**, T*, T*, uint16_t, uint16_t);
+	template <typename T> static void mult_vect_num(T*, T, T*, uint16_t);
+	template <typename T> static double norm(T*, uint16_t);
 };
 class netlist_t {
 public:
+    struct row_t;
 	uint8_t nodes;
 	uint8_t components;
-	enum port_order_t : uint8_t;
-	enum data_order_t : uint8_t;
-	enum component_order_t : uint8_t;
-	struct data_t;
-	struct port_t;
-	data_t *value;
-	port_t *port;
-	component_order_t *component_list;
+	row_t *row;
 	netlist_t(uint8_t, uint8_t);
 	~netlist_t(void);
 };
 class component_t {
 public:
-	static void insert(double **, double(**x)(netlist_t *, uint8_t, uint8_t, double *, double *), double(**y)(netlist_t *, uint8_t, uint8_t, double *, double *), uint8_t *, netlist_t *, uint8_t, uint8_t *, double *);
-	static void insert_from_memory(double(**x)(netlist_t *, uint8_t, uint8_t, double *, double *), uint8_t);
-	static void insert_copy_s(double(**x)(netlist_t *, uint8_t, uint8_t, double *, double *), uint8_t);
-	static double copy_s(netlist_t *, uint8_t, uint8_t, double *, double*);
-	static double const_val(netlist_t *, uint8_t, uint8_t, double *, double *);
-	static const uint8_t v_mna_add = 1;
-	static double v(netlist_t *, uint8_t, uint8_t, double *, double*);
-	static const uint8_t resistor_mna_add = 0;
-	static const uint8_t capacitor_mna_add = 0;
-	static const uint8_t inductor_mna_add = 0;
-	static const uint8_t diode_r_mna_add = 1;
-	static double diode_vd(netlist_t *, uint8_t, uint8_t, double *, double*);
-	static double diode_r_current(netlist_t *, uint8_t, uint8_t, double *, double *);
-
-	//fet
-	static double fet_current(netlist_t *, uint8_t, uint8_t, double *, double *);
+	static void insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos);
+	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 };
-class mna_t {
+class nod_t{
 public:
-	uint8_t nodes;
-	uint8_t hidden;
-	uint8_t size;
-	uint8_t components;
-	netlist_t *source;
-	double **g;
-	double **r;
-	double **jn;
-	double **jni;
-	double **jni_old;
-	double *z;
-	double *s;
-	double *s_old;
-	double *s_diff;
-	double(**y)(netlist_t *ref, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory);
-	double(**x)(netlist_t *ref, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory);
-	netlist_t *y_source;
-	double *f_memory;
-	uint8_t *f_netlist_pos;
-	mna_t(netlist_t *);
-	~mna_t(void);
-	void generate(void);
-	void update_z(void);
-	double eval_row(uint8_t);
-	double eval_row(uint8_t, double *);
-	double* eval(double *);
-	void iterate_once(void);
-	void iterate_n(uint16_t);
-	double** jacobian(void);
+    uint8_t nodes;//how many nodes
+	uint8_t dim;//nodal arrays length
+	uint8_t components;//netlist size
+	netlist_t *netlist;//source of a lot of data
+	double LFS0;
+	double *X;
+    double *S0;
+    double *FS0;
+    double *S1;
+    double *FS1;
+    double *S1_best;
+    double *FS1_best;
+    double *T1;
+    double *NT1;
+    double *U1;
+    double *update_array_temp;
+    double **G;//conductance
+    double **R;//resistance
+    double **JN;//Jacobian
+    double **JNI;//inverse Jacobian
+    double **updated_jacobian(void);//finds the numerical Jacobian
+    void update_array(double *, double *);
+    double eval_row(uint8_t, double *, double *);
+    double* eval_f(double *, double *, double *);
+	void iterate(uint16_t);
+    nod_t(netlist_t *source);
+    ~nod_t(void);
 };
 class math_t {
 public:
-	void sub(double *, double *, double *, uint8_t);
-	void add(double *, double *, double *, uint8_t);
-	double** invert(double **, double **, uint8_t);
+	static void sub(double *, double *, double *, uint8_t);
+	static void add(double *, double *, double *, uint8_t);
+	static double** invert(double **, double **, uint8_t);
 private:
-	int LUPDecompose(double **A, int N, double Tol, int *P);
-	void LUPSolve(double **A, int *P, double *b, int N, double *x);
-	void LUPInvert(double **A, int *P, int N, double **IA);
-	double LUPDeterminant(double **A, int *P, int N);
-}math;
+	static int LUPDecompose(double **A, int N, double Tol, int *P);
+	static void LUPSolve(double **A, int *P, double *b, int N, double *x);
+	static void LUPInvert(double **A, int *P, int N, double **IA);
+	static double LUPDeterminant(double **A, int *P, int N);
+};
 
 template <typename T> void utils_t::copy_vect(T *from, T *to, uint16_t length) {
 	while (length) {
@@ -127,7 +156,7 @@ template <typename T> T utils_t::mult_matrix_single_row_col(T** M, T** N, uint16
 	}
 	return acc;
 }
-template <typename T> void utils_t::mult_matrix(T** M, T** N, T** OUT, uint16_t i1, uint16_t j2, uint16_t len) {
+template <typename T> void utils_t::mult_mat_mat(T** M, T** N, T** OUT, uint16_t i1, uint16_t j2, uint16_t len) {
 	uint16_t x;
 	while (i1){
 		i1--;
@@ -150,442 +179,451 @@ template <typename T> void utils_t::mult_mat_vect(T** M, T* N, T* OUT, uint16_t 
 		}
 	}
 }
+template <typename T> void utils_t::mult_vect_num(T* vect, T num, T* out, uint16_t len){
+	while (len){
+		len--;
+		out[len] = vect[len]*num;
+	}
+}
 
+template <typename T> double utils_t::norm(T* vect, uint16_t len){
+    double acc = 0;
+    while(len){
+        len--;
+        acc+=pow(vect[len],2);
+    }
+    return sqrt(acc);
+}
 
-
-enum netlist_t::port_order_t : uint8_t {
-	//2 port
-	node_main = 0,
-	node_dest,
-	//opamp
-	vp = 0,
-	vn,
-	vcc,
-	vdd,
-	vo,
-	//jfet
-
-	//bjt
-	vc = 0,
-	vb,
-	ve,
-	//mosfet_
-	fet_n_drain = 0,
-	fet_n_gate,
-	fet_n_source
-};
-enum netlist_t::data_order_t : uint8_t{
-	//voltage
-	voltage = 0,
-	//current
-	current = 0,
-	//resistor
-	resistance = 0,
-	//capacitor
-	capacitance = 0,
-	//inductor
-	inductance = 0,
-	//op amp
-	a = 0,
-	gain = 0,
-	open_loop_gain = 0,
-	//diode
-	is = 0,
-	vt,
-	//jfet
-
-	//bjt
-
-	//mosfet
-	fet_w = 0,
-	fet_l,
-	fet_kp,
-	fet_vth,
-	fet_lambda
-};
-enum netlist_t::component_order_t : uint8_t{
-	voltage_src,
-	current_src,
-	resistor,
-	inductor,
-	capacitor,
-	opamp_1,
-	opamp_2,
-	opamp_3,
-	diode_r,
-	diode_s,
-	diode_z,
-	jfet_n,
-	jfet_p,
-	bjt_npn,
-	bjt_pnp,
-	fet_n,
-	fet_p
-};
-
-struct netlist_t::data_t {
-	double item[NETLIST_PARAM_MAX];
-};
-struct netlist_t::port_t {
-	uint8_t item[NETLIST_PORT_MAX];
+struct netlist_t::row_t{
+    uint8_t type;
+    double value[NETLIST_PARAM_MAX];
+    uint8_t node[NETLIST_CONNECTION_MAX];
+    void (*update)(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    char alias[NETLIST_ALIAS_SIZE];
 };
 
 netlist_t::netlist_t(uint8_t amnt_nodes, uint8_t amnt_comp) {
 	nodes = amnt_nodes;
 	components = amnt_comp;
 	if (amnt_nodes) {
-		value = new data_t[amnt_comp];
-		port = new port_t[amnt_comp];
-		component_list = new component_order_t[amnt_comp];
+		row = new row_t[amnt_comp];
 	}
 }
 netlist_t::~netlist_t() {
-	uint8_t pos = nodes;
 	if (nodes) {
-		delete[] value;
-		delete[] port;
-		delete[] component_list;
+		delete[] row;
 	}
 }
 
 
+void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos) {
+    while(netlist_pos){
+        netlist_pos--;
+        switch (netlist->row[netlist_pos].type){
+        case(voltage_source):
+            if(netlist->row[netlist_pos].node[positive]){
+                G[netlist->row[netlist_pos].node[positive] - 1][*vs_pos - 1] = 1;
+                G[*vs_pos - 1][netlist->row[netlist_pos].node[positive] - 1] = 1;
+            }
+            if(netlist->row[netlist_pos].node[negative]){
+                G[netlist->row[netlist_pos].node[positive] - 1][*vs_pos - 1] = -1;
+                G[*vs_pos - 1][netlist->row[netlist_pos].node[positive] - 1] = -1;
+            }
+            netlist->row[netlist_pos].node[hidden] = *vs_pos;
+            netlist->row[netlist_pos].update = voltage_f;
+            (*vs_pos)--;
+            break;
+        case(current_source):
+            //remember to += memory (current)
+            break;
+        case(resistor):
+            if (netlist->row[netlist_pos].node[positive]) {
+                G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[positive] - 1] += 1 / netlist->row[netlist_pos].value[resistance];
+                if (netlist->row[netlist_pos].node[negative]) {
+                    G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[negative] - 1] += -1 / netlist->row[netlist_pos].value[resistance];
+                }
+            }
+            if (netlist->row[netlist_pos].node[negative]) {
+                G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[negative] - 1] += 1 / netlist->row[netlist_pos].value[resistance];
+                if (netlist->row[netlist_pos].node[positive]) {
+                    G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -1 / netlist->row[netlist_pos].value[resistance];
+                }
+            }
+            break;
+        case(capacitor):
 
-void component_t::insert(double **g, double(**x)(netlist_t *, uint8_t, uint8_t, double *, double *), double (**y)(netlist_t *, uint8_t, uint8_t, double *, double *), uint8_t *f_netlist_pos, netlist_t *netlist, uint8_t pos, uint8_t *hidden, double *f_memory) {
-	switch (netlist->component_list[pos]){
-	case(netlist_t::component_order_t::voltage_src):
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_main]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1][*hidden - 1] = 1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1] = 1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1][*hidden - 1] = -1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = -1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_main] || netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-			x[*hidden - 1] = component_t::v;
-			y[*hidden - 1] = component_t::copy_s;
-			f_netlist_pos[*hidden - 1] = pos;
-			(*hidden)--;
-		}
-		break;
-	case(netlist_t::component_order_t::current_src):
-		//remember to += memory (current) 
-		break;
-	case(netlist_t::component_order_t::resistor):
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_main]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1][netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1] = 1 / netlist->value[pos].item[netlist_t::data_order_t::resistance];
-			if (netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-				g[netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1][netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = -1 / netlist->value[pos].item[netlist_t::data_order_t::resistance];
-			}
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1][netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = 1 / netlist->value[pos].item[netlist_t::data_order_t::resistance];
-			if (netlist->port[pos].item[netlist_t::port_order_t::node_main]) {
-				g[netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1][netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1] = -1 / netlist->value[pos].item[netlist_t::data_order_t::resistance];
-			}
-		}
-		break;
-	case(netlist_t::component_order_t::capacitor):
+            break;
+        case(inductor):
 
-		break;
-	case(netlist_t::component_order_t::inductor):
-
-		break;
-	case(netlist_t::component_order_t::diode_r):
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_main]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1][*hidden - 1] = 1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::node_main] - 1] = 1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1][*hidden - 1] = -1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::node_dest] - 1] = -1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::node_main] || netlist->port[pos].item[netlist_t::port_order_t::node_dest]) {
-			//x[*hidden - 1] = component_t::diode_vd;
-			x[*hidden - 1] = component_t::copy_s;
-			y[*hidden - 1] = component_t::diode_r_current;
-			f_netlist_pos[*hidden - 1] = pos;
-			(*hidden)--;
-		}
-		break;
-	case (netlist_t::component_order_t::fet_n):
-		if (netlist->port[pos].item[netlist_t::port_order_t::fet_n_drain]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::fet_n_drain] - 1][*hidden - 1] = 1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::fet_n_drain] - 1] = 1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::fet_n_source]) {
-			g[netlist->port[pos].item[netlist_t::port_order_t::fet_n_source] - 1][*hidden - 1] = -1;
-			g[*hidden - 1][netlist->port[pos].item[netlist_t::port_order_t::fet_n_source] - 1] = -1;
-		}
-		if (netlist->port[pos].item[netlist_t::port_order_t::fet_n_drain] || netlist->port[pos].item[netlist_t::port_order_t::fet_n_source]) {
-			x[*hidden - 1] = component_t::copy_s;
-			y[*hidden - 1] = component_t::fet_current;
-			f_netlist_pos[*hidden - 1] = pos;
-			(*hidden)--;
-		}
-		break;
-	default:
-		break;
-	}
+            break;
+        case(diode):
+            if (netlist->row[netlist_pos].node[positive]) {
+                G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[positive] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[negative]) {
+                    G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[negative] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[negative]) {
+                G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[negative] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[positive]) {
+                    G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
+                }
+            }
+            break;
+        case (fet_n):
+            if (netlist->row[netlist_pos].node[fet_source]) {
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_drain]) {
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = fet_n_f;
+            break;
+        default:
+            break;
+        }
+    }
 }
-void component_t::insert_from_memory(double(**f)(netlist_t *, uint8_t, uint8_t, double *, double *), uint8_t pos) {
-	f[pos] = component_t::const_val;
+void component_t::voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    target[netlist->row[netlist_pos].node[hidden] - 1] = netlist->row[netlist_pos].value[voltage];
 }
-void component_t::insert_copy_s(double(**f)(netlist_t *, uint8_t,  uint8_t, double *, double *), uint8_t pos) {
-	f[pos] = component_t::copy_s;
+void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double vs, vd, vg, vds, vgs, id, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs < vt){
+        id = 0;
+    }
+    else if(vd<(vg-vt)){
+        id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+    if(netlist->row[netlist_pos].node[fet_source]){
+        target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        target[netlist->row[netlist_pos].node[fet_drain] - 1] -= id;
+    }
 }
-double component_t::copy_s(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory) {
-	return input[call_pos];
-}
-double component_t::diode_vd(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory) {
-	return input[netlist->port[netlist_pos].item[netlist_t::port_order_t::node_main] - 1] - input[netlist->port[netlist_pos].item[netlist_t::port_order_t::node_dest] - 1];
-}
-double component_t::diode_r_current(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory) {
-	return (netlist->value[netlist_pos].item[netlist_t::data_order_t::is])*(exp((input[netlist->port[netlist_pos].item[netlist_t::port_order_t::node_main] - 1] - input[netlist->port[netlist_pos].item[netlist_t::port_order_t::node_dest] - 1]) / netlist->value[netlist_pos].item[netlist_t::data_order_t::vt]) - 1);
-}
-double component_t::v(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory) {
-	return netlist->value[netlist_pos].item[netlist_t::data_order_t::voltage];
-}
-double component_t::const_val(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *input, double *memory) {
-	return memory[call_pos];
-}
-//fet
-double component_t::fet_current(netlist_t *netlist, uint8_t netlist_pos, uint8_t call_pos, double *variables, double *memory) {
-	double vds = (netlist_t::port_order_t::fet_n_drain ? variables[netlist->port[netlist_pos].item[netlist_t::port_order_t::fet_n_drain] - 1] : 0) 
-		- (netlist_t::port_order_t::fet_n_source ? variables[netlist->port[netlist_pos].item[netlist_t::port_order_t::fet_n_source] - 1] : 0);
-	double vgs = (netlist_t::port_order_t::fet_n_gate ? variables[netlist->port[netlist_pos].item[netlist_t::port_order_t::fet_n_gate] - 1] : 0) 
-		- (netlist_t::port_order_t::fet_n_source ? variables[netlist->port[netlist_pos].item[netlist_t::port_order_t::fet_n_source] - 1] : 0);
-	double w = netlist->value[netlist_pos].item[netlist_t::data_order_t::fet_w];
-	double l = netlist->value[netlist_pos].item[netlist_t::data_order_t::fet_l];
-	double kp = netlist->value[netlist_pos].item[netlist_t::data_order_t::fet_kp];
-	double vth = netlist->value[netlist_pos].item[netlist_t::data_order_t::fet_vth];
-	double lambda = netlist->value[netlist_pos].item[netlist_t::data_order_t::fet_lambda];
-	if (vth > vgs) {
-		return 0;
-	}
-	else if (vds > (vgs - vth)) {
-		return (w / l)*(kp / 2)*pow(vgs - vth, 2)*(1 + lambda * vds);
-	}
-	else {
-		return (w / l)*(kp / 2)*(2*(vgs-vth)*vds - vds*vds)*(1 + lambda * vds);
-	}
-}
-
-
-
-mna_t::mna_t(netlist_t *src) {
+nod_t::nod_t(netlist_t *src) {
 	uint8_t pos = src->components;
-	source = src;
+	uint8_t hidden;
+	netlist = src;
 	nodes = src->nodes;
-	size = src->nodes;
+	dim = src->nodes;
 	components = src->components;
-	if (size) {
+	if (dim) {
 		while (pos) {
 			pos--;
-			switch (src->component_list[pos]){
-			case (netlist_t::component_order_t::voltage_src):
-				size += component_t::v_mna_add;
-				break;
-			case (netlist_t::component_order_t::resistor):
-				size += component_t::resistor_mna_add;
-				break;
-			case (netlist_t::component_order_t::capacitor):
-				size += component_t::capacitor_mna_add;
-				break;
-			case (netlist_t::component_order_t::inductor):
-				size += component_t::inductor_mna_add;
-				break;
-			case (netlist_t::component_order_t::diode_r):
-				size += component_t::diode_r_mna_add;
+            switch (src->row[pos].type){
+			case (voltage_source):
+				dim++;
 				break;
 			default:
 				break;
 			}
 		}
-		hidden = size;
-		z = new double[size];
-		s = new double[size];
-		s_old = new double[size];
-		s_diff = new double[size];
-		typedef double(*comp_function)(netlist_t *, uint8_t, uint8_t, double *, double *);
-		x = new comp_function[size];
-		y = new comp_function[size];
-		f_memory = new double[size];
-		f_netlist_pos = new uint8_t[size];
-		g = new double*[size];
-		pos = size;
+		X = new double[dim];
+        S0 = new double[dim];
+        FS0 = new double[dim];
+        S1 = new double[dim];
+        FS1 = new double[dim];
+        S1_best = new double[dim];
+        FS1_best = new double[dim];
+        T1 = new double[dim];
+        NT1 = new double[dim];
+        U1 = new double[dim];
+        update_array_temp = new double[dim];
+        G = new double*[dim];
+        R = new double*[dim];
+        JN = new double*[dim];
+        JNI = new double*[dim];
+		pos = dim;
 		while (pos) {
 			pos--;
-			g[pos] = new double[size];
+			G[pos] = new double[dim];
 		}
-		r = new double*[size];
-		pos = size;
+		pos = dim;
 		while (pos) {
 			pos--;
-			r[pos] = new double[size];
+			R[pos] = new double[dim];
 		}
-		jn = new double*[size];
-		pos = size;
+		pos = dim;
 		while (pos) {
 			pos--;
-			jn[pos] = new double[size];
+			JN[pos] = new double[dim];
 		}
-		jni = new double*[size];
-		pos = size;
+		pos = dim;
 		while (pos) {
 			pos--;
-			jni[pos] = new double[size];
+			JNI[pos] = new double[dim];
 		}
-		jni_old = new double*[size];
-		pos = size;
-		while (pos) {
-			pos--;
-			jni_old[pos] = new double[size];
-		}
-		utils_t::zero_vect(x, size);
-		utils_t::zero_vect(y, size);
-		utils_t::zero_vect(s, size);
-		utils_t::zero_vect(f_memory, size);
-		utils_t::zero_matrix(g, size, size);
-		utils_t::zero_matrix(r, size, size);
-		utils_t::zero_matrix(jni, size, size);
+		utils_t::zero_vect(X, dim);
+		utils_t::zero_vect(S0, dim);
+		utils_t::zero_matrix(G, dim, dim);
+		utils_t::zero_matrix(R, dim, dim);
+		//utils_t::zero_matrix(JNI, dim, dim);
+		hidden = dim;
+		component_t::insert_all(G, X, netlist, dim, &hidden);
+		math_t::invert(G, R, dim);
 	}
 }
-mna_t::~mna_t() {
-	uint8_t pos = size;
-	if (size) {
-		delete[] z;
-		delete[] s;
-		delete[] s_old;
-		delete[] s_diff;
-		delete[] x;
-		delete[] y;
-		delete[] f_memory;
-		delete[] f_netlist_pos;
+nod_t::~nod_t() {
+	uint8_t pos = dim;
+	if (dim) {
 		while (pos) {
 			pos--;
-			delete[] g[pos];
+			delete[] G[pos];
 		}
-		delete[] g;
-		pos = size;
+		delete[] G;
+		pos = dim;
 		while (pos) {
 			pos--;
-			delete[] r[pos];
+			delete[] R[pos];
 		}
-		delete[] r;
-		pos = size;
+		delete[] R;
+		pos = dim;
 		while (pos) {
 			pos--;
-			delete[] jn[pos];
+			delete[] JN[pos];
 		}
-		delete[] jn;
-		pos = size;
+		delete[] JN;
+		pos = dim;
 		while (pos) {
 			pos--;
-			delete[] jni[pos];
+			delete[] JNI[pos];
 		}
-		delete[] jni;
-		pos = size;
-		while (pos) {
-			pos--;
-			delete[] jni_old[pos];
-		}
-		delete[] jni_old;
+		delete[] JNI;
 	}
 }
-void mna_t::generate() {
-	uint8_t i = size;
-	uint8_t pos = components;
-	while (pos){
-		pos--;
-		component_t::insert(g, x, y, f_netlist_pos, source, pos, &hidden, f_memory);
-	}
-	pos = nodes;
-	while (pos){
-		pos--;
-		f_netlist_pos[pos] = pos;
-		component_t::insert_from_memory(x, pos);
-		component_t::insert_copy_s(y,pos);
-	}
-	math.invert(g, r, size);
-}
-void mna_t::update_z() {
-	uint8_t i = size;
+
+double** nod_t::updated_jacobian() {
+	uint8_t i = dim;
 	uint8_t j;
+	double *S_temp = new double[dim];
+	utils_t::copy_vect(S0, S_temp, dim);
 	while (i) {
 		i--;
-		z[i] = 0;	//limpando para usar +=
-		j = size;
+		j = dim;
 		while (j) {
 			j--;
-			z[j] += r[i][j] * x[j](source, f_netlist_pos[i], i, s, f_memory);
+			S_temp[j] += NOD_JACOBIAN_STEP;
+			JN[i][j] = (eval_row(i, S_temp, X) - eval_row(i, S0, X)) / NOD_JACOBIAN_STEP;
+			S_temp[j] -= NOD_JACOBIAN_STEP;
 		}
 	}
+	delete[] S_temp;
+	return JN;
 }
-double mna_t::eval_row(uint8_t i) {
+void nod_t::update_array(double *data, double *target){
+    uint8_t pos = dim;
+    utils_t::zero_vect(target, dim);
+    while(pos){
+        pos--;
+        netlist->row[pos].update(pos, netlist, data, target);
+    }
+}
+
+double nod_t::eval_row(uint8_t i, double *yy, double *xx) {
 	double acc;
-	uint8_t aux = size;
-	acc = y[i](source, f_netlist_pos[i], i, s, f_memory);
+	uint8_t aux = dim;
+	acc = yy[i];
 	while (aux) {
 		aux--;
-		acc -= r[i][aux] * x[aux](source, f_netlist_pos[aux], aux, s, f_memory);
+		acc -= R[i][aux] * xx[aux];
 	}
 	return acc;
 }
-double mna_t::eval_row(uint8_t i, double *input) {
-	double acc;
-	uint8_t aux = size;
-	acc = y[i](source, f_netlist_pos[i], i, input, f_memory);
-	while (aux) {
-		aux--;
-		acc -= r[i][aux] * x[aux](source, f_netlist_pos[aux], aux, input, f_memory);
-	}
-	return acc;
-}
-double* mna_t::eval(double* output) {
-	uint8_t i_max = size;
+double* nod_t::eval_f(double *yy, double *xx, double *output) {
+	uint8_t i_max = dim;
+	update_array(yy, xx);
 	while (i_max){
 		i_max--;
-		output[i_max] = eval_row(i_max);
+		output[i_max] = eval_row(i_max, yy, xx);
 	}
 	return output;
 }
-double** mna_t::jacobian() {
-	uint8_t i = size;
-	uint8_t j;
-	double *s_temp;
-	s_temp = new double[size];
-	utils_t::copy_vect(s, s_temp, size);
-	while (i) {
-		i--;
-		j = size;
-		while (j) {
-			j--;
-			s_temp[j] += MNA_JACOBIAN_STEP;
-			jn[i][j] = (eval_row(i, s_temp) - eval_row(i, s)) / MNA_JACOBIAN_STEP;
-			s_temp[j] -= MNA_JACOBIAN_STEP; 
-		}
-	}
-	math.invert(jn, jni, size);
-	delete[] s_temp;
-	return jn;
-}
-void mna_t::iterate_once() {
-	double *s_new = new double[size];
-	double *z_new = new double[size];
-	eval(z);
-	jacobian();
-	utils_t::mult_mat_vect(jni, z, z_new, (uint16_t)size, (uint16_t)size);
-	math.sub(s, z_new, s_new, size);
-	utils_t::copy_vect(s_new, s, size);
-	delete[] s_new;
-	delete[] z_new;
-}
-void mna_t::iterate_n(uint16_t n) {
-	while (n){
-		n--;
-		iterate_once();
-	}
+void nod_t::iterate(uint16_t k) {
+    uint8_t not_done;
+    uint8_t first_sub_step;
+    //S1_best
+    //FS1_best
+    double LFS1_best;
+    //JNI
+    //T1
+    double LT1;
+    //NT1
+    //U1
+    //S1
+    //FS1
+    double LFS1;
+    double lambda;
+    eval_f(S0, X, FS0);
+    LFS0 = utils_t::norm(FS0, dim);
+    while((LFS0 > NOD_CLOSE_ENOUGH) && k){
+        k--;
+        lambda = 1;
+        not_done = TRUE;
+        //while (not_done){
+            /* T1 = Jn^-1*F(S0);
+             * S1 = S0 - Lam * T1;
+             * if(len(F(S1)) > len(F(S0))){
+             *     if(Lam*len(T1) > STEP){
+             *         Lam /= 10;
+             *     }
+             *     else{
+             *         S0 -= STEP*T1/len(T1);
+             *         not_done = FALSE;
+             *     }
+             * }
+             * else{
+             *     S0 = S1;
+             *     not_done = FALSE;
+             * }
+             */
+
+            /* "static double FS0"
+             * "static double LFS0"
+             * JNI = Jn^-1;
+             * T1 = JNI*FS0;
+             * LT1 = len(T1);
+             * NT1 = T1/LT1;
+             * U1 = Lam*T1;
+             * S1 = S0 - U1;
+             * FS1 = F(S1);
+             * LFS1 = len(FS1);
+             * if(LFS1 > LFS0){
+             *     if(U1 > STEP){
+             *         Lam /= 10;
+             *     }
+             *     else{
+             *         S0 -= STEP*NT1;
+             *         not_done = FALSE;
+             *     }
+             * }
+             * else{
+             *     S0 = S1;
+             *     FS0  = FS1;
+             *     LFS0 = LFS1;
+             *     not_done = FALSE;
+             * }
+             */
+
+            /* "static double FS0"
+             * "static double LFS0"
+             * "FIRST = TRUE"
+             * "BEST_S1";
+             * "BEST_LFS1";
+             * JNI = Jn^-1;  //<<<BEFORE WHILE
+             * T1 = JNI*FS0; //<<<BEFORE WHILE
+             * LT1 = len(T1);
+             * NT1 = T1/LT1;
+             * U1 = Lam*T1;
+             * S1 = S0 - U1;
+             * FS1 = F(S1);
+             * LFS1 = len(FS1);
+             * if(LFS1 >= LFS0){
+             *     if(U1 >= STEP){
+             *         Lam /= 10;
+             *         if((BEST_LFS1 > LFS1) || FIRST){
+             *             FIRST = FALSE;
+             *             BEST_S1 = S1;
+             *             BEST_LFS1 = LFS1;
+             *         }
+             *     }
+             *     else{
+             *         S0 = BEST_S1;
+             *         not_done = FALSE;
+             *     }
+             * }
+             * else{
+             *     S0 = S1;
+             *     FS0  = FS1;
+             *     LFS0 = LFS1;
+             *     not_done = FALSE;
+             * }
+             */
+        //}
+        first_sub_step = TRUE;
+        math_t::invert(updated_jacobian(), JNI, dim);
+        utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
+        LT1 = utils_t::norm(T1, dim);
+        utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
+        while(not_done){
+            utils_t::mult_vect_num(T1, lambda, U1, dim);
+            math_t::sub(S0, U1, S1, dim);
+            eval_f(S1, X, FS1);
+            LFS1 = utils_t::norm(FS1, dim);
+            if(LFS1 >= LFS0){
+                if(utils_t::norm(U1, dim) >= NOD_SUB_STEP){
+                    lambda /= 10;
+                    if((LFS1_best > LFS1) || first_sub_step){
+                        first_sub_step = FALSE;
+                        utils_t::copy_vect(S1, S1_best, dim);
+                        utils_t::copy_vect(FS1, FS1_best, dim);
+                        LFS1_best = LFS1;
+                    }
+                }
+                else{
+                    not_done = FALSE;
+                    if(first_sub_step){
+                        utils_t::copy_vect(S1, S0, dim);
+                        utils_t::copy_vect(FS1, FS0, dim);
+                        LFS0 = LFS1;
+                    }
+                    else{
+                        utils_t::copy_vect(S1_best, S0, dim);
+                        utils_t::copy_vect(FS1_best, FS0, dim);
+                        LFS0 = LFS1_best;
+                    }
+                }
+            }
+            else{
+                not_done = FALSE;
+                utils_t::copy_vect(S1, S0, dim);
+                utils_t::copy_vect(FS1, FS0, dim);
+                LFS0 = LFS1;
+            }
+        }
+    }
 }
 
 
@@ -645,7 +683,7 @@ int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
 		}
 	}
 
-	return 1;  //decomposition done 
+	return 1;  //decomposition done
 }
 void math_t::LUPSolve(double **A, int *P, double *b, int N, double *x) {
 
@@ -696,19 +734,19 @@ double math_t::LUPDeterminant(double **A, int *P, int N) {
 	else
 		return -det;
 }
-double** math_t::invert(double **in, double** out, uint8_t size) {
-	int *P = new int[size];
+double** math_t::invert(double **in, double** out, uint8_t dim) {
+	int *P = new int[dim];
 	double ** A;
-	A = new double*[size];
-	uint8_t pos = size;
+	A = new double*[dim];
+	uint8_t pos = dim;
 	while (pos) {
 		pos--;
-		A[pos] = new double[size];
+		A[pos] = new double[dim];
 	}
-	utils_t::copy_matrix(in, A, size, size);
-	math.LUPDecompose(A, size, 0.001, P);
-	math.LUPInvert(A, P, size, out);
-	pos = size;
+	utils_t::copy_matrix(in, A, dim, dim);
+	math_t::LUPDecompose(A, dim, 0.001, P);
+	math_t::LUPInvert(A, P, dim, out);
+	pos = dim;
 	while (pos) {
 		pos--;
 		delete[] A[pos];
@@ -721,44 +759,52 @@ using namespace std;
 int main() {
 	cout << "inicio" << endl;
 	netlist_t net(3, 5);
-	net.component_list[0] = netlist_t::component_order_t::resistor;
-	net.component_list[1] = netlist_t::component_order_t::resistor;
-	net.component_list[2] = netlist_t::component_order_t::voltage_src;
-	net.component_list[3] = netlist_t::component_order_t::diode_r;
-	net.component_list[4] = netlist_t::component_order_t::diode_r;
+	net.row[0].type = resistor;
+	net.row[1].type = resistor;
+	net.row[2].type = voltage_source;
+	net.row[3].type = fet_n;
+	net.row[4].type = fet_n;
 
 	cout << "componentes adicionados" << endl;
 
-	net.port[0].item[netlist_t::port_order_t::node_main] = 1;
-	net.port[0].item[netlist_t::port_order_t::node_dest] = 2;
+	net.row[0].node[positive] = 1;
+	net.row[0].node[negative] = 2;
 
-	net.port[1].item[netlist_t::port_order_t::node_main] = 3;
-	net.port[1].item[netlist_t::port_order_t::node_dest] = 0;
+	net.row[1].node[positive] = 1;
+	net.row[1].node[negative] = 3;
 
-	net.port[2].item[netlist_t::port_order_t::node_main] = 1;
-	net.port[2].item[netlist_t::port_order_t::node_dest] = 0;
+	net.row[2].node[positive] = 1;
+	net.row[2].node[negative] = 0;
 
-	net.port[3].item[netlist_t::port_order_t::node_main] = 2;
-	net.port[3].item[netlist_t::port_order_t::node_dest] = 3;
+	net.row[3].node[fet_source] = 0;
+	net.row[3].node[fet_drain] = 2;
+    net.row[3].node[fet_gate] = 3;
 
-	net.port[4].item[netlist_t::port_order_t::node_main] = 2;
-	net.port[4].item[netlist_t::port_order_t::node_dest] = 3;
+	net.row[4].node[fet_source] = 0;
+	net.row[4].node[fet_drain] = 3;
+    net.row[4].node[fet_gate] = 3;
 
 	cout << "portas definidas" << endl;
 
-	net.value[0].item[netlist_t::data_order_t::resistance] = 100;
-	net.value[1].item[netlist_t::data_order_t::resistance] = 100;
-	net.value[2].item[netlist_t::data_order_t::voltage] = 5;
-	net.value[3].item[netlist_t::data_order_t::is] = 1e-12;
-	net.value[3].item[netlist_t::data_order_t::vt] = 0.025;
-	net.value[4].item[netlist_t::data_order_t::is] = 1e-12;
-	net.value[4].item[netlist_t::data_order_t::vt] = 0.025;
+	net.row[0].value[resistance] = 1000;
+	net.row[1].value[resistance] = 1000;
+	net.row[2].value[voltage] = 5;
+	net.row[3].value[fet_w] = 1;
+	net.row[3].value[fet_l] = 1;
+	net.row[3].value[fet_kp] = 0.05;
+	net.row[3].value[fet_vt] = 0.85;
+	net.row[3].value[fet_lambda] = 0.015;
+	net.row[4].value[fet_w] = 1;
+	net.row[4].value[fet_l] = 1;
+	net.row[4].value[fet_kp] = 0.05;
+	net.row[4].value[fet_vt] = 0.85;
+	net.row[4].value[fet_lambda] = 0.015;
 
 	cout << "valores definidos" << endl;
 
-	mna_t solver(&net);
-	solver.generate();
-	solver.iterate_n(2000);
-	cout << "Va =     " << solver.s[0] << endl << "Vb =     " << solver.s[1] << endl << "Vc =     " << solver.s[2] << endl << "Is =     " << solver.s[3] << endl << "Vdiodo = " << solver.s[4] << endl;
+	nod_t solver(&net);
+	solver.iterate(2000);
+	cout << "Va =     " << solver.S0[0] << endl << "Vb =     " << solver.S0[1] << endl << "Vc =     " << solver.S0[2] << endl << "Is =     " << solver.S0[3] << endl << "Vdiodo = " << solver.S0[4] << endl;
 	return 0;
 }
+
