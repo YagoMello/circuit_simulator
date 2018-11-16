@@ -79,6 +79,7 @@ public:
 class component_t {
 public:
 	static void insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos);
+	static void nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 };
@@ -250,6 +251,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                     G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -1 / netlist->row[netlist_pos].value[resistance];
                 }
             }
+            netlist->row[netlist_pos].update = nop_f;
             break;
         case(capacitor):
 
@@ -297,6 +299,9 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
         }
     }
 }
+
+void component_t::nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+}
 void component_t::voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     target[netlist->row[netlist_pos].node[hidden] - 1] = netlist->row[netlist_pos].value[voltage];
 }
@@ -343,6 +348,7 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         target[netlist->row[netlist_pos].node[fet_drain] - 1] -= id;
     }
 }
+
 nod_t::nod_t(netlist_t *src) {
 	uint8_t pos = src->components;
 	uint8_t hidden;
@@ -803,8 +809,8 @@ int main() {
 	cout << "valores definidos" << endl;
 
 	nod_t solver(&net);
-	solver.iterate(2000);
-	cout << "Va =     " << solver.S0[0] << endl << "Vb =     " << solver.S0[1] << endl << "Vc =     " << solver.S0[2] << endl << "Is =     " << solver.S0[3] << endl << "Vdiodo = " << solver.S0[4] << endl;
+	solver.iterate(200000);
+	cout << "Va =     " << solver.S0[0] << endl << "Vb =     " << solver.S0[1] << endl << "Vc =     " << solver.S0[2] << endl << "Is =     " << solver.S0[3] << endl;
 	return 0;
 }
 
