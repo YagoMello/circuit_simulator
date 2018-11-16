@@ -73,7 +73,7 @@ public:
 	uint8_t nodes;
 	uint8_t components;
 	row_t *row;
-	netlist_t(uint8_t, uint8_t);
+	netlist_t(uint8_t nod, uint8_t comp);
 	~netlist_t(void);
 };
 class component_t {
@@ -205,7 +205,7 @@ struct netlist_t::row_t{
 };
 
 netlist_t::netlist_t(uint8_t amnt_nodes, uint8_t amnt_comp) {
-	nodes = amnt_nodes;
+	nodes = amnt_nodes - 1;
 	components = amnt_comp;
 	if (amnt_nodes) {
 		row = new row_t[amnt_comp];
@@ -351,7 +351,7 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
 
 nod_t::nod_t(netlist_t *src) {
 	uint8_t pos = src->components;
-	uint8_t hidden;
+	uint8_t voltages;
 	netlist = src;
 	nodes = src->nodes;
 	dim = src->nodes;
@@ -407,12 +407,27 @@ nod_t::nod_t(netlist_t *src) {
 		utils_t::zero_matrix(G, dim, dim);
 		utils_t::zero_matrix(R, dim, dim);
 		//utils_t::zero_matrix(JNI, dim, dim);
-		hidden = dim;
-		component_t::insert_all(G, X, netlist, dim, &hidden);
+		voltages = dim;
+		component_t::insert_all(G, X, netlist, components, &voltages);
 		math_t::invert(G, R, dim);
 	}
 }
 nod_t::~nod_t() {
+    delete[] X;
+    delete[] S0;
+    delete[] FS0;
+    delete[] S1;
+    delete[] FS1;
+    delete[] S1_best;
+    delete[] FS1_best;
+    delete[] T1;
+    delete[] NT1;
+    delete[] U1;
+    delete[] update_array_temp;
+    delete[] G;
+    delete[] R;
+    delete[] JN;
+    delete[] JNI;
 	uint8_t pos = dim;
 	if (dim) {
 		while (pos) {
@@ -444,23 +459,27 @@ nod_t::~nod_t() {
 double** nod_t::updated_jacobian() {
 	uint8_t i = dim;
 	uint8_t j;
-	double *S_temp = new double[dim];
-	utils_t::copy_vect(S0, S_temp, dim);
+	double *S0_temp = new double[dim];
+	double *X_temp = new double[dim];
+	utils_t::copy_vect(S0, S0_temp, dim);
 	while (i) {
 		i--;
 		j = dim;
 		while (j) {
 			j--;
-			S_temp[j] += NOD_JACOBIAN_STEP;
-			JN[i][j] = (eval_row(i, S_temp, X) - eval_row(i, S0, X)) / NOD_JACOBIAN_STEP;
-			S_temp[j] -= NOD_JACOBIAN_STEP;
+			S0_temp[j] += NOD_JACOBIAN_STEP;
+			update_array(S0, X);
+			update_array(S0_temp, X_temp);
+			JN[i][j] = (eval_row(i, S0_temp, X_temp) - eval_row(i, S0, X)) / NOD_JACOBIAN_STEP;
+			S0_temp[j] -= NOD_JACOBIAN_STEP;
 		}
 	}
-	delete[] S_temp;
+	delete[] S0_temp;
+	delete[] X_temp;
 	return JN;
 }
 void nod_t::update_array(double *data, double *target){
-    uint8_t pos = dim;
+    uint8_t pos = components;
     utils_t::zero_vect(target, dim);
     while(pos){
         pos--;
@@ -601,25 +620,29 @@ void nod_t::iterate(uint16_t k) {
             if(LFS1 >= LFS0){
                 if(utils_t::norm(U1, dim) >= NOD_SUB_STEP){
                     lambda /= 10;
+
+                    /*
                     if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
                         utils_t::copy_vect(S1, S1_best, dim);
                         utils_t::copy_vect(FS1, FS1_best, dim);
                         LFS1_best = LFS1;
-                    }
+                    }*/
                 }
                 else{
                     not_done = FALSE;
-                    if(first_sub_step){
+                    math_t::sub(S0, U1, S0, dim);
+
+                    //if(first_sub_step){
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
                         LFS0 = LFS1;
-                    }
-                    else{
+                    //}
+                    /*else{
                         utils_t::copy_vect(S1_best, S0, dim);
                         utils_t::copy_vect(FS1_best, FS0, dim);
                         LFS0 = LFS1_best;
-                    }
+                    }*/
                 }
             }
             else{
@@ -764,7 +787,7 @@ double** math_t::invert(double **in, double** out, uint8_t dim) {
 using namespace std;
 int main() {
 	cout << "inicio" << endl;
-	netlist_t net(3, 5);
+	netlist_t net(4, 5);
 	net.row[0].type = resistor;
 	net.row[1].type = resistor;
 	net.row[2].type = voltage_source;
@@ -809,8 +832,18 @@ int main() {
 	cout << "valores definidos" << endl;
 
 	nod_t solver(&net);
-	solver.iterate(200000);
-	cout << "Va =     " << solver.S0[0] << endl << "Vb =     " << solver.S0[1] << endl << "Vc =     " << solver.S0[2] << endl << "Is =     " << solver.S0[3] << endl;
+	solver.iterate(20);
+	cout
+	<< "Va =     " << solver.S0[0] << endl
+	<< "Vb =     " << solver.S0[1] << endl
+	<< "Vc =     " << solver.S0[2] << endl
+	<< "Is =     " << solver.S0[3] << endl
+	<< "LFS0 =   " << solver.LFS0  << endl
+	<< "G =      " << endl
+	<< solver.G[0][0] << "     " << solver.G[0][1] << "     " << solver.G[0][2] << "     " << solver.G[0][3] << endl
+	<< solver.G[1][0] << "     " << solver.G[1][1] << "     " << solver.G[1][2] << "     " << solver.G[1][3] << endl
+	<< solver.G[2][0] << "     " << solver.G[2][1] << "     " << solver.G[2][2] << "     " << solver.G[2][3] << endl
+	<< solver.G[3][0] << "     " << solver.G[3][1] << "     " << solver.G[3][2] << "     " << solver.G[3][3] << endl;
 	return 0;
 }
 
