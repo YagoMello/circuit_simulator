@@ -92,8 +92,10 @@ public:
 	netlist_t *netlist;//source of a lot of data
 	double LFS0;
 	double *X;
+	double *X_temp;
     double *S0;
     double *FS0;
+    double *S0_temp;
     double *S1;
     double *FS1;
     double *S1_best;
@@ -369,8 +371,10 @@ nod_t::nod_t(netlist_t *src) {
 			}
 		}
 		X = new double[dim];
+		X_temp = new double[dim];
         S0 = new double[dim];
         FS0 = new double[dim];
+        S0_temp = new double[dim];
         S1 = new double[dim];
         FS1 = new double[dim];
         S1_best = new double[dim];
@@ -415,8 +419,10 @@ nod_t::nod_t(netlist_t *src) {
 }
 nod_t::~nod_t() {
     delete[] X;
+	delete[] X_temp;
     delete[] S0;
     delete[] FS0;
+    delete[] S0_temp;
     delete[] S1;
     delete[] FS1;
     delete[] S1_best;
@@ -456,8 +462,6 @@ nod_t::~nod_t() {
 double** nod_t::updated_jacobian() {
 	uint8_t i = dim;
 	uint8_t j;
-	double *S0_temp = new double[dim];
-	double *X_temp = new double[dim];
 	utils_t::copy_vect(S0, S0_temp, dim);
 	while (i) {
 		i--;
@@ -471,8 +475,6 @@ double** nod_t::updated_jacobian() {
 			S0_temp[j] -= NOD_JACOBIAN_STEP;
 		}
 	}
-	delete[] S0_temp;
-	delete[] X_temp;
 	return JN;
 }
 void nod_t::update_array(double *data, double *target){
@@ -772,9 +774,103 @@ double** math_t::invert(double **in, double** out, uint8_t dim) {
 	return out;
 }
 
+class spice_t{
+public:
+    spice_t();
+    ~spice_t();
+    netlist_t *netlist;
+    nod_t *solver;
+    void request_components();
+    //void show_R(void);
+    //void show_G(void);
+    //void show_solver(void);
+    void show_result(void);
+};
+spice_t::spice_t(){
+    unsigned int nodes;
+    unsigned int components;
+    std::cout << "Nodes: ";
+    std::cin >> nodes;
+    std::cout << "Components: ";
+    std::cin >> components;
+    netlist = new netlist_t(nodes, components);
+    request_components();
+    solver = new nod_t(netlist);
+    solver->iterate(10000);
+}
+spice_t::~spice_t(){
+    delete netlist;
+}
+void spice_t::request_components(){
+    uint16_t type;
+    uint8_t pos = netlist->components;
+    unsigned int gambiarra;
+    while(pos){
+        pos--;
+        std::cout << "Componente: ";
+        std::cin >> gambiarra;
+        type = gambiarra;
+        std::cout << "Apelido: ";
+        std::cin >> netlist->row[pos].alias;
+        switch(type){
+        case(resistor):
+            netlist->row[pos].type = type;
+            std::cout << "No +: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[positive] = gambiarra;
+            std::cout << "No -: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[negative] = gambiarra;
+            std::cout << "Resistencia: ";
+            std::cin >> netlist->row[pos].value[resistance];
+            break;
+        case(voltage_source):
+            netlist->row[pos].type = type;
+            std::cout << "No +: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[positive] = gambiarra;
+            std::cout << "No -: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[negative] = gambiarra;
+            std::cout << "Tensao: ";
+            std::cin >> netlist->row[pos].value[voltage];
+            break;
+        case(fet_n):
+            netlist->row[pos].type = type;
+            std::cout << "No Drain: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_drain] = gambiarra;
+            std::cout << "No Source: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_source] = gambiarra;
+            std::cout << "No Gate: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_gate] = gambiarra;
+            std::cout << "W: ";
+            std::cin >> netlist->row[pos].value[fet_w];
+            std::cout << "L: ";
+            std::cin >> netlist->row[pos].value[fet_l];
+            std::cout << "Kp: ";
+            std::cin >> netlist->row[pos].value[fet_kp];
+            std::cout << "Lambda: ";
+            std::cin >> netlist->row[pos].value[fet_lambda];
+            std::cout << "Vth: ";
+            std::cin >> netlist->row[pos].value[fet_vt];
+            break;
+        }
+    }
+}
+void spice_t::show_result(){
+    uint16_t pos = netlist->nodes;
+    while (pos){
+        pos--;
+        std::cout << "No " << pos << ": " << solver->S0[pos] << "V" << std::endl;
+    }
+}
+
 using namespace std;
 int main() {
-	cout << "inicio" << endl;
+	cout << "inicio" << endl;/*
 	netlist_t net(4, 5);
 	net.row[0].type = resistor;
 	net.row[1].type = resistor;
@@ -827,8 +923,10 @@ int main() {
 	<< solver.R[0][0] << "     " << solver.R[0][1] << "     " << solver.R[0][2] << "     " << solver.R[0][3] << endl
 	<< solver.R[1][0] << "     " << solver.R[1][1] << "     " << solver.R[1][2] << "     " << solver.R[1][3] << endl
 	<< solver.R[2][0] << "     " << solver.R[2][1] << "     " << solver.R[2][2] << "     " << solver.R[2][3] << endl
-	<< solver.R[3][0] << "     " << solver.R[3][1] << "     " << solver.R[3][2] << "     " << solver.R[3][3] << endl;
-	getchar();
+	<< solver.R[3][0] << "     " << solver.R[3][1] << "     " << solver.R[3][2] << "     " << solver.R[3][3] << endl;*/
+	spice_t spice;
+    spice.show_result();
+    getchar();
 	return 0;
 }
 
