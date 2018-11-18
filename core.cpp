@@ -83,6 +83,7 @@ public:
 	static void nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static void fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 };
 class nod_t{
 public:
@@ -297,6 +298,27 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             }
             netlist->row[netlist_pos].update = fet_n_f;
             break;
+        case(fet_p):
+            if (netlist->row[netlist_pos].node[fet_source]) {
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_drain]) {
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = fet_p_f;
+            break;
         default:
             break;
         }
@@ -339,6 +361,49 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         id = 0;
     }
     else if(vd<(vg-vt)){
+        id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+    if(netlist->row[netlist_pos].node[fet_source]){
+        target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        target[netlist->row[netlist_pos].node[fet_drain] - 1] -= id;
+    }
+}
+void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double vs, vd, vg, vds, vgs, id, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs > vt){
+        id = 0;
+    }
+    else if(vd>(vg-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
     }
     else{
