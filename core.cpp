@@ -14,13 +14,8 @@
 constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
-constexpr double NOD_SUB_STEP = 1e-6;
-constexpr double NOD_JACOBIAN_STEP = 1e-12;
-constexpr uint16_t NOD_MAX_ITERATIONS = 10000;
-constexpr double NOD_CLOSE_ENOUGH = 1e-12;
-constexpr double MATH_INVERSE_TOL = 1e-14;
-constexpr double GMIN = 1e-10;
-
+constexpr double MATH_INVERSE_TOL = 10e-15;
+double GMIN;
 //NODE_REF
 //2 port
 constexpr uint8_t positive = 0;
@@ -109,11 +104,11 @@ public:
     double **R;//resistance
     double **JN;//Jacobian
     double **JNI;//inverse Jacobian
-    double **updated_jacobian(void);//finds the numerical Jacobian
+    double **updated_jacobian(double);//finds the numerical Jacobian
     void update_array(double *, double *);
     double eval_row(uint8_t, double *, double *);
     double* eval_f(double *, double *, double *);
-	void iterate(uint16_t);
+	uint32_t iterate(uint32_t, double, double);
     nod_t(netlist_t *source);
     ~nod_t(void);
 };
@@ -524,7 +519,7 @@ nod_t::~nod_t() {
 	}
 }
 
-double** nod_t::updated_jacobian() {
+double** nod_t::updated_jacobian(double jacobian_step) {
 	uint8_t i = dim;
 	uint8_t j;
 	utils_t::copy_vect(S0, S0_temp, dim);
@@ -533,11 +528,11 @@ double** nod_t::updated_jacobian() {
 		j = dim;
 		while (j) {
 			j--;
-			S0_temp[j] += NOD_JACOBIAN_STEP;
+			S0_temp[j] += jacobian_step;
 			update_array(S0, X);
 			update_array(S0_temp, X_temp);
-			JN[i][j] = (eval_row(i, S0_temp, X_temp) - eval_row(i, S0, X)) / NOD_JACOBIAN_STEP;
-			S0_temp[j] -= NOD_JACOBIAN_STEP;
+			JN[i][j] = (eval_row(i, S0_temp, X_temp) - eval_row(i, S0, X)) / jacobian_step;
+			S0_temp[j] -= jacobian_step;
 		}
 	}
 	return JN;
@@ -570,7 +565,8 @@ double* nod_t::eval_f(double *yy, double *xx, double *output) {
 	}
 	return output;
 }
-void nod_t::iterate(uint16_t k) {
+uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max) {
+    uint8_t unlimited = !k;
     uint8_t not_done;
     uint8_t first_sub_step;
     double LFS1_best;
@@ -579,8 +575,10 @@ void nod_t::iterate(uint16_t k) {
     double lambda;
     eval_f(S0, X, FS0);
     LFS0 = utils_t::norm(FS0, dim);
-    while((LFS0 > NOD_CLOSE_ENOUGH) && k){
-        k--;
+    while((LFS0 > error_max) && (k || unlimited)){
+        if(k){
+            k--;
+        }
         lambda = 1;
         not_done = TRUE;
         //while (not_done){
@@ -664,7 +662,7 @@ void nod_t::iterate(uint16_t k) {
              */
         //}
         first_sub_step = TRUE;
-        math_t::invert(updated_jacobian(), JNI, dim);
+        math_t::invert(updated_jacobian(sub_step), JNI, dim);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
         LT1 = utils_t::norm(T1, dim);
         utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
@@ -674,10 +672,8 @@ void nod_t::iterate(uint16_t k) {
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
             if(LFS1 >= LFS0){
-                if(utils_t::norm(U1, dim) >= NOD_SUB_STEP){
+                if(utils_t::norm(U1, dim) >= sub_step){
                     lambda /= 10;
-
-
                     if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
                         utils_t::copy_vect(S1, S1_best, dim);
@@ -687,7 +683,6 @@ void nod_t::iterate(uint16_t k) {
                 }
                 else{
                     not_done = FALSE;
-
                     if(first_sub_step){
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
@@ -708,6 +703,7 @@ void nod_t::iterate(uint16_t k) {
             }
         }
     }
+    return k;
 }
 
 
@@ -841,31 +837,46 @@ double** math_t::invert(double **in, double** out, uint8_t dim) {
 
 class spice_t{
 public:
+    uint32_t iterations;
     spice_t();
     ~spice_t();
     netlist_t *netlist;
     nod_t *solver;
+    void simulate(void);
     void request_components();
-    //void show_R(void);
-    //void show_G(void);
-    //void show_solver(void);
     void show_result(void);
     void show_voltages(void);
+    void show_statistics(void);
 };
 spice_t::spice_t(){
-    unsigned int nodes;
-    unsigned int components;
+    uint16_t nodes;
+    uint16_t components;
     std::cout << "Nodes: ";
     std::cin >> nodes;
     std::cout << "Components: ";
     std::cin >> components;
+    std::cout << "GMIN (0 = padrao): ";
+    std::cin >> GMIN;
+    GMIN = GMIN ? GMIN : 10e-12;
     netlist = new netlist_t(nodes, components);
     request_components();
     solver = new nod_t(netlist);
-    solver->iterate(10000);
 }
 spice_t::~spice_t(){
     delete netlist;
+}
+void spice_t::simulate(){
+    double step;
+    double close_enough;
+    std::cout << "Iteracoes (0 = ilimitado): ";
+    std::cin >> iterations;
+    std::cout << "Maior passo para caso ruim (0 = padrao): ";
+    std::cin >> step;
+    step = step ? step : 1e-3;
+    std::cout << "Norma maxima do vetor erro maximo [V] (0 = padrao): ";
+    std::cin >> close_enough;
+    close_enough = close_enough ? close_enough : 1e-6;
+    iterations -= solver->iterate(iterations, step, close_enough);
 }
 void spice_t::request_components(){
     uint16_t type;
@@ -961,8 +972,8 @@ void spice_t::show_voltages(){
         pos--;
         switch(netlist->row[pos].type){
         case(fet_n):
-            std::cout << netlist->row[pos].alias << "- Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
-            std::cout << netlist->row[pos].alias << "- Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << " - Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << " - Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
             break;
         case(fet_p):
             std::cout << netlist->row[pos].alias << "- Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
@@ -974,67 +985,20 @@ void spice_t::show_voltages(){
         }
     }
 }
+void spice_t::show_statistics(){
+    std::cout << "LFS0: " << solver->LFS0 << std::endl;
+    std::cout << "Iterations: " << iterations << std::endl;
+}
 
 using namespace std;
 int main() {
-	cout << "inicio" << endl;/*
-	netlist_t net(4, 5);
-	net.row[0].type = resistor;
-	net.row[1].type = resistor;
-	net.row[2].type = voltage_source;
-	net.row[3].type = resistor;
-	net.row[4].type = fet_n;
-
-	cout << "componentes adicionados" << endl;
-
-	net.row[0].node[positive] = 1;
-	net.row[0].node[negative] = 2;
-
-	net.row[1].node[positive] = 2;
-	net.row[1].node[negative] = 3;
-
-	net.row[2].node[positive] = 1;
-	net.row[2].node[negative] = 0;
-
-	net.row[3].node[positive] = 3;
-	net.row[3].node[negative] = 0;
-
-	net.row[4].node[fet_source] = 0;
-	net.row[4].node[fet_drain] = 2;
-    net.row[4].node[fet_gate] = 3;
-
-	cout << "portas definidas" << endl;
-
-	net.row[0].value[resistance] = 20e3;
-	net.row[1].value[resistance] = 150e3;
-	net.row[2].value[voltage] = 20;
-	net.row[3].value[resistance] = 100e3;
-
-	net.row[4].value[fet_w] = 1;
-	net.row[4].value[fet_l] = 1;
-	net.row[4].value[fet_kp] = 884.615384e-6;
-	net.row[4].value[fet_vt] = 3;
-	net.row[4].value[fet_lambda] = 0.004;
-
-	cout << "valores definidos" << endl;
-
-	nod_t solver(&net);
-	solver.iterate(10);
-	cout
-	<< "Va =     " << solver.S0[0] << endl
-	<< "Vb =     " << solver.S0[1] << endl
-	<< "Vc =     " << solver.S0[2] << endl
-	<< "Is =     " << solver.S0[3] << endl
-	<< "LFS0 =   " << solver.LFS0  << endl
-	<< "G =      " << endl
-	<< solver.R[0][0] << "     " << solver.R[0][1] << "     " << solver.R[0][2] << "     " << solver.R[0][3] << endl
-	<< solver.R[1][0] << "     " << solver.R[1][1] << "     " << solver.R[1][2] << "     " << solver.R[1][3] << endl
-	<< solver.R[2][0] << "     " << solver.R[2][1] << "     " << solver.R[2][2] << "     " << solver.R[2][3] << endl
-	<< solver.R[3][0] << "     " << solver.R[3][1] << "     " << solver.R[3][2] << "     " << solver.R[3][3] << endl;*/
 	spice_t spice;
-	cout << "-----" <<endl;
+	spice.simulate();
+	cout << "-----" << endl;
+	spice.show_statistics();
+	cout << "-----" << endl;
     spice.show_result();
-    cout << "-----" <<endl;
+    cout << "-----" << endl;
     spice.show_voltages();
     getchar();
 	return 0;
