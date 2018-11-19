@@ -17,7 +17,7 @@ constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
 constexpr double NOD_SUB_STEP = 1e-6;
 constexpr double NOD_JACOBIAN_STEP = 1e-12;
 constexpr uint16_t NOD_MAX_ITERATIONS = 10000;
-constexpr double NOD_CLOSE_ENOUGH = 1e-8;
+constexpr double NOD_CLOSE_ENOUGH = 1e-12;
 constexpr double MATH_INVERSE_TOL = 1e-14;
 constexpr double GMIN = 1e-10;
 
@@ -850,6 +850,7 @@ public:
     //void show_G(void);
     //void show_solver(void);
     void show_result(void);
+    void show_voltages(void);
 };
 spice_t::spice_t(){
     unsigned int nodes;
@@ -929,7 +930,26 @@ void spice_t::show_result(){
     uint16_t pos = netlist->nodes;
     while (pos){
         pos--;
-        std::cout << "No " << pos << ": " << solver->S0[pos] << "V" << std::endl;
+        std::cout << "No " << pos+1 << ": " << solver->S0[pos] << "V" << std::endl;
+    }
+}
+void spice_t::show_voltages(){
+    uint16_t pos = netlist->components;
+    while(pos){
+        pos--;
+        switch(netlist->row[pos].type){
+        case(fet_n):
+            std::cout << netlist->row[pos].alias << "- Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << "- Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            break;
+        case(fet_p):
+            std::cout << netlist->row[pos].alias << "- Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << "- Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            break;
+        default:
+            std::cout << netlist->row[pos].alias << ": " << (solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1]) << "V" <<std::endl;
+            break;
+        }
     }
 }
 
@@ -990,7 +1010,10 @@ int main() {
 	<< solver.R[2][0] << "     " << solver.R[2][1] << "     " << solver.R[2][2] << "     " << solver.R[2][3] << endl
 	<< solver.R[3][0] << "     " << solver.R[3][1] << "     " << solver.R[3][2] << "     " << solver.R[3][3] << endl;*/
 	spice_t spice;
+	cout << "-----" <<endl;
     spice.show_result();
+    cout << "-----" <<endl;
+    spice.show_voltages();
     getchar();
 	return 0;
 }
