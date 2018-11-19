@@ -108,7 +108,7 @@ public:
     void update_array(double *, double *);
     double eval_row(uint8_t, double *, double *);
     double* eval_f(double *, double *, double *);
-	uint32_t iterate(uint32_t, double, double);
+	uint32_t iterate(uint32_t, double, double, double);
     nod_t(netlist_t *source);
     ~nod_t(void);
 };
@@ -285,12 +285,6 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
                 }
             }
-            if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
-                if (netlist->row[netlist_pos].node[fet_source]) {
-                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
-                }
-            }
             netlist->row[netlist_pos].update = fet_n_f;
             break;
         case(fet_p):
@@ -304,12 +298,6 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
-                }
-            }
-            if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
-                if (netlist->row[netlist_pos].node[fet_source]) {
-                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
                 }
             }
             netlist->row[netlist_pos].update = fet_p_f;
@@ -352,7 +340,7 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     }
     vgs = vg-vs;
     vds = vd-vs;
-    if(vgs < vt){
+    if(vgs <= vt){
         id = 0;
     }
     else if(vd<(vg-vt)){
@@ -395,7 +383,7 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     }
     vgs = vg-vs;
     vds = vd-vs;
-    if(vgs > vt){
+    if(vgs >= vt){
         id = 0;
     }
     else if(vd>(vg-vt)){
@@ -405,10 +393,10 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
     }
     if(netlist->row[netlist_pos].node[fet_source]){
-        target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
+        target[netlist->row[netlist_pos].node[fet_source] - 1] -= id;
     }
     if(netlist->row[netlist_pos].node[fet_drain]){
-        target[netlist->row[netlist_pos].node[fet_drain] - 1] -= id;
+        target[netlist->row[netlist_pos].node[fet_drain] - 1] += id;
     }
 }
 
@@ -565,7 +553,7 @@ double* nod_t::eval_f(double *yy, double *xx, double *output) {
 	}
 	return output;
 }
-uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max) {
+uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double jacobian_step) {
     uint8_t unlimited = !k;
     uint8_t not_done;
     uint8_t first_sub_step;
@@ -662,7 +650,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max) {
              */
         //}
         first_sub_step = TRUE;
-        math_t::invert(updated_jacobian(sub_step), JNI, dim);
+        math_t::invert(updated_jacobian(jacobian_step), JNI, dim);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
         LT1 = utils_t::norm(T1, dim);
         utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
@@ -671,7 +659,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max) {
             math_t::sub(S0, U1, S1, dim);
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
-            if(LFS1 >= LFS0){
+            if(LFS1 > LFS0){
                 if(utils_t::norm(U1, dim) >= sub_step){
                     lambda /= 10;
                     if((LFS1_best > LFS1) || first_sub_step){
@@ -868,6 +856,7 @@ spice_t::~spice_t(){
 void spice_t::simulate(){
     double step;
     double close_enough;
+    double jacobian_step;
     std::cout << "Iteracoes (0 = ilimitado): ";
     std::cin >> iterations;
     std::cout << "Maior passo para caso ruim (0 = padrao): ";
@@ -876,7 +865,10 @@ void spice_t::simulate(){
     std::cout << "Norma maxima do vetor erro maximo [V] (0 = padrao): ";
     std::cin >> close_enough;
     close_enough = close_enough ? close_enough : 1e-6;
-    iterations -= solver->iterate(iterations, step, close_enough);
+    std::cout << "dx para derivada numerica (0 = padrao): ";
+    std::cin >> jacobian_step;
+    jacobian_step = jacobian_step ? jacobian_step : 1e-10;
+    iterations -= solver->iterate(iterations, step, close_enough, jacobian_step);
 }
 void spice_t::request_components(){
     uint16_t type;
@@ -976,8 +968,8 @@ void spice_t::show_voltages(){
             std::cout << netlist->row[pos].alias << " - Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
             break;
         case(fet_p):
-            std::cout << netlist->row[pos].alias << "- Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
-            std::cout << netlist->row[pos].alias << "- Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << " - Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
+            std::cout << netlist->row[pos].alias << " - Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
             break;
         default:
             std::cout << netlist->row[pos].alias << ": " << (solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1]) << "V" <<std::endl;
