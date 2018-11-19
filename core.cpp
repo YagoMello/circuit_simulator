@@ -923,6 +923,28 @@ void spice_t::request_components(){
             std::cout << "Vth: ";
             std::cin >> netlist->row[pos].value[fet_vt];
             break;
+        case(fet_p):
+            netlist->row[pos].type = type;
+            std::cout << "No Drain: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_drain] = gambiarra;
+            std::cout << "No Source: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_source] = gambiarra;
+            std::cout << "No Gate: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_gate] = gambiarra;
+            std::cout << "W: ";
+            std::cin >> netlist->row[pos].value[fet_w];
+            std::cout << "L: ";
+            std::cin >> netlist->row[pos].value[fet_l];
+            std::cout << "Kp: ";
+            std::cin >> netlist->row[pos].value[fet_kp];
+            std::cout << "Lambda: ";
+            std::cin >> netlist->row[pos].value[fet_lambda];
+            std::cout << "Vth: ";
+            std::cin >> netlist->row[pos].value[fet_vt];
+            break;
         }
     }
 }
