@@ -2,6 +2,7 @@
 #include <iostream>
 #include <inttypes.h>
 #include <math.h>
+#include <string.h>
 
 #ifndef TRUE
 #define TRUE 1
@@ -14,6 +15,7 @@
 constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
+constexpr uint8_t COMPONENT_CODE_MAX_LENGTH = 16;
 constexpr double MATH_INVERSE_TOL = 10e-15;
 double GMIN;
 //NODE_REF
@@ -22,6 +24,9 @@ constexpr uint8_t positive = 0;
 constexpr uint8_t negative = 1;
 //voltage_source trick
 constexpr uint8_t hidden = 2;
+//current_source
+constexpr uint8_t from = 0;
+constexpr uint8_t to = 1;
 //mosfet
 constexpr uint8_t fet_source = 0;
 constexpr uint8_t fet_drain = 1;
@@ -30,8 +35,13 @@ constexpr uint8_t fet_gate = 2;
 //VALUE_REF
 //voltage_source
 constexpr uint8_t voltage = 0;
+//current_source
+constexpr uint8_t current = 0;
 //resistor
 constexpr uint8_t resistance = 0;
+//diode
+constexpr uint8_t diode_is = 0;
+constexpr uint8_t diode_vt = 1;
 //mosfet
 constexpr uint8_t fet_w = 0;
 constexpr uint8_t fet_l = 1;
@@ -50,6 +60,31 @@ constexpr uint16_t bjt_npn = 6;
 constexpr uint16_t bjt_pnp = 7;
 constexpr uint16_t fet_n = 8;
 constexpr uint16_t fet_p = 9;
+
+//NAME_REF
+const char* resistor_name = "Resistor";
+const char* voltage_source_name = "Voltage Source";
+const char* current_source_name = "Current Source";
+const char* capacitor_name = "Capacitor";
+const char* inductor_name = "Inductor";
+const char* diode_name = "Diode";
+const char* bjt_npn_name = "BJT NPN";
+const char* bjt_pnp_name = "BJT PNP";
+const char* fet_n_name = "N channel MOSFET";
+const char* fet_p_name = "P channel MOSFET";
+
+
+//CODE_REF
+const char* resistor_code = "r";
+const char* voltage_source_code = "vs";
+const char* current_source_code = "cs";
+const char* capacitor_code = "cap";
+const char* inductor_code = "ind";
+const char* diode_code = "d";
+const char* bjt_npn_code = "BJT NPN";
+const char* bjt_pnp_code = "BJT PNP";
+const char* fet_n_code = "NMOS";
+const char* fet_p_code = "PMOS";
 
 class utils_t {
 public:
@@ -77,6 +112,8 @@ public:
 	static void insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos);
 	static void nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void current_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 };
@@ -235,7 +272,19 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             (*vs_pos)--;
             break;
         case(current_source):
-            //remember to += memory (current)
+            if (netlist->row[netlist_pos].node[positive]) {
+                G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[positive] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[negative]) {
+                    G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[negative] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[negative]) {
+                G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[negative] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[positive]) {
+                    G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = current_f;
             break;
         case(resistor):
             if (netlist->row[netlist_pos].node[positive]) {
@@ -271,6 +320,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                     G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
                 }
             }
+            netlist->row[netlist_pos].update = diode_f;
             break;
         case (fet_n):
             if (netlist->row[netlist_pos].node[fet_source]) {
@@ -278,11 +328,26 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
                 }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
                 G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
                 }
             }
             netlist->row[netlist_pos].update = fet_n_f;
@@ -312,6 +377,33 @@ void component_t::nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, d
 }
 void component_t::voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     target[netlist->row[netlist_pos].node[hidden] - 1] = netlist->row[netlist_pos].value[voltage];
+}
+void component_t::current_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    if(netlist->row[netlist_pos].node[from]){
+        target[netlist->row[netlist_pos].node[from] - 1] -= netlist->row[netlist_pos].value[current];
+    }
+    if(netlist->row[netlist_pos].node[to]){
+        target[netlist->row[netlist_pos].node[to] - 1] += netlist->row[netlist_pos].value[current];
+    }
+}
+void component_t::diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double d_current;
+    double d_is = netlist->row[netlist_pos].value[diode_is];
+    double d_vt = netlist->row[netlist_pos].value[diode_vt];
+    double d_vd = 0;
+    if(netlist->row[netlist_pos].node[positive]){
+        d_vd += data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        d_vd -= data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    d_current = d_is * (exp(d_vd / d_vt) - 1);
+    if(netlist->row[netlist_pos].node[positive]){
+        target[netlist->row[netlist_pos].node[positive] - 1] -= d_current;
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        target[netlist->row[netlist_pos].node[negative] - 1] += d_current;
+    }
 }
 void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     double vs, vd, vg, vds, vgs, id, w, l, kp, vt, lambda;
@@ -831,10 +923,11 @@ public:
     netlist_t *netlist;
     nod_t *solver;
     void simulate(void);
-    void request_components();
+    void request_components(void);
     void show_result(void);
     void show_voltages(void);
     void show_statistics(void);
+    static void show_init_screen(void);
 };
 spice_t::spice_t(){
     uint16_t nodes;
@@ -853,109 +946,153 @@ spice_t::spice_t(){
 spice_t::~spice_t(){
     delete netlist;
 }
+void spice_t::show_init_screen(void){
+    std::cout << "BSpice Alpha" << endl;
+    std::cout << "Component code:"
+    std::cout << resistor_name << ": " << resistor_code << std::endl;
+    std::cout << voltage_source_name << ": " << voltage_source_code << std::endl;
+    std::cout << current_source_name << ": " << current_source_code << std::endl;
+    std::cout << capacitor_name << ": " << capacitor_code << std::endl;
+    std::cout << inductor_name << ": " << inductor_code << std::endl;
+    std::cout << diode_name << ": " << diode_code << std::endl;
+    std::cout << bjt_npn_name << ": " << bjt_npn_code << std::endl;
+    std::cout << bjt_pnp_name << ": " << bjt_pnp_code << std::endl;
+    std::cout << fet_n_name << ": " << fet_n_code << std::endl;
+    std::cout << fet_p_name << ": " << fet_p_code << std::endl;
+}
 void spice_t::simulate(){
     double step;
     double close_enough;
     double jacobian_step;
-    std::cout << "Iteracoes (0 = ilimitado): ";
+    std::cout << "Iterations (0 = unlimited): ";
     std::cin >> iterations;
-    std::cout << "Maior passo para caso ruim (0 = padrao): ";
+    std::cout << "Bad step max length [V] (0 = default): ";
     std::cin >> step;
     step = step ? step : 1e-3;
-    std::cout << "Norma maxima do vetor erro maximo [V] (0 = padrao): ";
+    std::cout << "Error vector max length [V] (0 = default): ";
     std::cin >> close_enough;
     close_enough = close_enough ? close_enough : 1e-6;
-    std::cout << "dx para derivada numerica (0 = padrao): ";
+    std::cout << "Numeric derivative step [V] (0 = default): ";
     std::cin >> jacobian_step;
     jacobian_step = jacobian_step ? jacobian_step : 1e-10;
     iterations -= solver->iterate(iterations, step, close_enough, jacobian_step);
 }
 void spice_t::request_components(){
-    uint16_t type;
+    char code[COMPONENT_CODE_MAX_LENGTH];
+    uint8_t confirmation;
     uint8_t pos = netlist->components;
     unsigned int gambiarra;
+    std::cout << "----- Component " << (unsigned int)pos << " -----" << std::endl;
     while(pos){
         pos--;
-        std::cout << "Componente: ";
-        std::cin >> gambiarra;
-        type = gambiarra;
-        std::cout << "Apelido: ";
+        std::cout << "Component: ";
+        std::cin >> code;
+        std::cout << "Alias: ";
         std::cin >> netlist->row[pos].alias;
-        switch(type){
-        case(resistor):
-            netlist->row[pos].type = type;
-            std::cout << "No +: ";
+        if(!strcmp(code, resistor_code)){
+            netlist->row[pos].type = resistor;
+            std::cout << "Node +: ";
             std::cin >> gambiarra;
             netlist->row[pos].node[positive] = gambiarra;
-            std::cout << "No -: ";
+            std::cout << "Node -: ";
             std::cin >> gambiarra;
             netlist->row[pos].node[negative] = gambiarra;
-            std::cout << "Resistencia: ";
+            std::cout << "Resistance: ";
             std::cin >> netlist->row[pos].value[resistance];
-            break;
-        case(voltage_source):
-            netlist->row[pos].type = type;
-            std::cout << "No +: ";
+        }
+        else if(!strcmp(code, voltage_source_code)){
+            netlist->row[pos].type = voltage_source;
+            std::cout << "Node +: ";
             std::cin >> gambiarra;
             netlist->row[pos].node[positive] = gambiarra;
-            std::cout << "No -: ";
+            std::cout << "Node -: ";
             std::cin >> gambiarra;
             netlist->row[pos].node[negative] = gambiarra;
-            std::cout << "Tensao: ";
+            std::cout << "Voltage: ";
             std::cin >> netlist->row[pos].value[voltage];
-            break;
-        case(fet_n):
-            netlist->row[pos].type = type;
-            std::cout << "No Drain: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_drain] = gambiarra;
-            std::cout << "No Source: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_source] = gambiarra;
-            std::cout << "No Gate: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_gate] = gambiarra;
-            std::cout << "W: ";
-            std::cin >> netlist->row[pos].value[fet_w];
-            std::cout << "L: ";
-            std::cin >> netlist->row[pos].value[fet_l];
-            std::cout << "Kp: ";
-            std::cin >> netlist->row[pos].value[fet_kp];
-            std::cout << "Lambda: ";
-            std::cin >> netlist->row[pos].value[fet_lambda];
-            std::cout << "Vth: ";
-            std::cin >> netlist->row[pos].value[fet_vt];
-            break;
-        case(fet_p):
-            netlist->row[pos].type = type;
-            std::cout << "No Drain: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_drain] = gambiarra;
-            std::cout << "No Source: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_source] = gambiarra;
-            std::cout << "No Gate: ";
-            std::cin >> gambiarra;
-            netlist->row[pos].node[fet_gate] = gambiarra;
-            std::cout << "W: ";
-            std::cin >> netlist->row[pos].value[fet_w];
-            std::cout << "L: ";
-            std::cin >> netlist->row[pos].value[fet_l];
-            std::cout << "Kp: ";
-            std::cin >> netlist->row[pos].value[fet_kp];
-            std::cout << "Lambda: ";
-            std::cin >> netlist->row[pos].value[fet_lambda];
-            std::cout << "Vth: ";
-            std::cin >> netlist->row[pos].value[fet_vt];
-            break;
         }
+        else if(!strcmp(code, current_source_code)){
+            netlist->row[pos].type = current_source;
+            std::cout << "Current from: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[from] = gambiarra;
+            std::cout << "to: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[to] = gambiarra;
+            std::cout << "Current: ";
+            std::cin >> netlist->row[pos].value[current];
+        }
+        else if(!strcmp(code, diode_code)){
+            netlist->row[pos].type = diode;
+            std::cout << "Node +: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[from] = gambiarra;
+            std::cout << "Node -: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[to] = gambiarra;
+            std::cout << "Is: ";
+            std::cin >> netlist->row[pos].value[diode_is];
+            std::cout << "Vt: ";
+            std::cin >> netlist->row[pos].value[diode_vt];
+        }
+        else if(!strcmp(code, fet_n_code)){
+            netlist->row[pos].type = fet_n;
+            std::cout << "Drain node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_drain] = gambiarra;
+            std::cout << "Source node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_source] = gambiarra;
+            std::cout << "Gate node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_gate] = gambiarra;
+            std::cout << "W: ";
+            std::cin >> netlist->row[pos].value[fet_w];
+            std::cout << "L: ";
+            std::cin >> netlist->row[pos].value[fet_l];
+            std::cout << "Kp: ";
+            std::cin >> netlist->row[pos].value[fet_kp];
+            std::cout << "Lambda: ";
+            std::cin >> netlist->row[pos].value[fet_lambda];
+            std::cout << "Vth: ";
+            std::cin >> netlist->row[pos].value[fet_vt];
+        }
+        else if(!strcmp(code, fet_p_code)){
+            netlist->row[pos].type = fet_p;
+            std::cout << "Drain node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_drain] = gambiarra;
+            std::cout << "Source node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_source] = gambiarra;
+            std::cout << "Gate node: ";
+            std::cin >> gambiarra;
+            netlist->row[pos].node[fet_gate] = gambiarra;
+            std::cout << "W: ";
+            std::cin >> netlist->row[pos].value[fet_w];
+            std::cout << "L: ";
+            std::cin >> netlist->row[pos].value[fet_l];
+            std::cout << "Kp: ";
+            std::cin >> netlist->row[pos].value[fet_kp];
+            std::cout << "Lambda: ";
+            std::cin >> netlist->row[pos].value[fet_lambda];
+            std::cout << "Vth: ";
+            std::cin >> netlist->row[pos].value[fet_vt];
+        }
+        std::cout << "confirm? (n = no, anything else = yes): ";
+        std::cin >> confirmation;
+        if(confirmation == 'n'){
+            pos++;
+
+        }
+        std::cout << "----- Component " << (unsigned int)pos << " -----" << std::endl;
     }
 }
 void spice_t::show_result(){
     uint16_t pos = netlist->nodes;
     while (pos){
         pos--;
-        std::cout << "No " << pos+1 << ": " << solver->S0[pos] << "V" << std::endl;
+        std::cout << "Node " << pos+1 << ": " << solver->S0[pos] << "V" << std::endl;
     }
 }
 void spice_t::show_voltages(){
@@ -984,6 +1121,7 @@ void spice_t::show_statistics(){
 
 using namespace std;
 int main() {
+    spice_t::show_init_screen();
 	spice_t spice;
 	spice.simulate();
 	cout << "-----" << endl;
