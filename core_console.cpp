@@ -770,36 +770,36 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
             math_t::sub(S0, U1, S1, dim);
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
-            /*if(LFS1 > LFS0){
+            if(LFS1 > LFS0){
                 if(lambda*LT1 >= sub_step){
                     lambda /= 10;
-                    /*if((LFS1_best > LFS1) || first_sub_step){
+                    if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
                         utils_t::copy_vect(S1, S1_best, dim);
                         utils_t::copy_vect(FS1, FS1_best, dim);
                         LFS1_best = LFS1;
-                    }*//*
+                    }
                 }
                 else{
                     not_done = FALSE;
-                    //if(first_sub_step){
+                    if(first_sub_step){
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
                         LFS0 = LFS1;
-                    //}
-                    /*else{
+                    }
+                    else{
                         utils_t::copy_vect(S1_best, S0, dim);
                         utils_t::copy_vect(FS1_best, FS0, dim);
                         LFS0 = LFS1_best;
-                    }*//*
+                    }
                 }
-            }*/
-            //else{
+            }
+            else{
                 not_done = FALSE;
                 utils_t::copy_vect(S1, S0, dim);
                 utils_t::copy_vect(FS1, FS0, dim);
                 LFS0 = LFS1;
-            //}
+            }
         }
     }
     return k;
