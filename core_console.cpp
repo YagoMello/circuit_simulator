@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <string.h>
+#include <iomanip>
 
 #ifndef TRUE
 #define TRUE 1
@@ -88,6 +89,21 @@ const char* bjt_npn_code = "bjt npn";
 const char* bjt_pnp_code = "pnp";
 const char* fet_n_code = "nmos";
 const char* fet_p_code = "pmos";
+
+void print(double **MAT, uint8_t lin, uint8_t col){
+    uint8_t temp = col;
+    std::cout << std::setprecision(10);
+    while(lin){
+        lin--;
+        col = temp;
+        while(col){
+            col--;
+            std::cout << MAT[lin][col] << "   ";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::setprecision(10);
+}
 
 class utils_t {
 public:
@@ -621,6 +637,7 @@ nod_t::~nod_t() {
 double** nod_t::updated_jacobian(double jacobian_step) {
 	uint8_t i = dim;
 	uint8_t j;
+	update_array(S0, X);
 	utils_t::copy_vect(S0, S0_temp, dim);
 	while (i) {
 		i--;
@@ -628,7 +645,6 @@ double** nod_t::updated_jacobian(double jacobian_step) {
 		while (j) {
 			j--;
 			S0_temp[j] += jacobian_step;
-			update_array(S0, X);
 			update_array(S0_temp, X_temp);
 			JN[i][j] = (eval_row(i, S0_temp, X_temp) - eval_row(i, S0, X)) / jacobian_step;
 			S0_temp[j] -= jacobian_step;
@@ -770,8 +786,12 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
             math_t::sub(S0, U1, S1, dim);
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
+            //std::cout << "-----" << std::endl;
+            //print(&S1, dim, 1);
+
             if(LFS1 > LFS0){
                 if(lambda*LT1 >= sub_step){
+                    //std::cout << "bad step" << std::endl;
                     lambda /= 10;
                     if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
@@ -783,11 +803,13 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
                 else{
                     not_done = FALSE;
                     if(first_sub_step){
+                        //std::cout << "worst" << std::endl;
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
                         LFS0 = LFS1;
                     }
                     else{
+                        //std::cout << "lambda too small" << std::endl;
                         utils_t::copy_vect(S1_best, S0, dim);
                         utils_t::copy_vect(FS1_best, FS0, dim);
                         LFS0 = LFS1_best;
@@ -795,6 +817,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
                 }
             }
             else{
+                //std::cout << "good" << std::endl;
                 not_done = FALSE;
                 utils_t::copy_vect(S1, S0, dim);
                 utils_t::copy_vect(FS1, FS0, dim);
