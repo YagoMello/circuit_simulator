@@ -947,7 +947,7 @@ spice_t::~spice_t(){
     delete netlist;
 }
 void spice_t::show_init_screen(void){
-    std::cout << "BSpice Alpha" << endl;
+    std::cout << "BSpice Alpha" << std::endl;
     std::cout << "Component code:";
     std::cout << resistor_name << ": " << resistor_code << std::endl;
     std::cout << voltage_source_name << ": " << voltage_source_code << std::endl;
