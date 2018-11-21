@@ -948,7 +948,8 @@ spice_t::~spice_t(){
 }
 void spice_t::show_init_screen(void){
     std::cout << "BSpice Alpha" << std::endl;
-    std::cout << "Component code:";
+    std::cout << "GND = Node 0 = 0" << std::endl;
+    std::cout << "Component code:" << std::endl;
     std::cout << resistor_name << ": " << resistor_code << std::endl;
     std::cout << voltage_source_name << ": " << voltage_source_code << std::endl;
     std::cout << current_source_name << ": " << current_source_code << std::endl;
@@ -961,6 +962,8 @@ void spice_t::show_init_screen(void){
     std::cout << fet_p_name << ": " << fet_p_code << std::endl;
 }
 void spice_t::simulate(){
+    char initial_guess;
+    uint16_t pos = netlist->nodes;
     double step;
     double close_enough;
     double jacobian_step;
@@ -975,6 +978,13 @@ void spice_t::simulate(){
     std::cout << "Numeric derivative step [V] (0 = default): ";
     std::cin >> jacobian_step;
     jacobian_step = jacobian_step ? jacobian_step : 1e-10;
+    std::cout << "Initial guess? (y/n): ";
+    std::cin >> initial_guess;
+    while(pos && (initial_guess != 'n')){
+        std::cout << "Node " << pos << ": ";
+        pos--;
+        std::cin >> solver->S0[pos];
+    }
     iterations -= solver->iterate(iterations, step, close_enough, jacobian_step);
 }
 void spice_t::request_components(){
@@ -982,8 +992,8 @@ void spice_t::request_components(){
     uint8_t confirmation;
     uint8_t pos = netlist->components;
     unsigned int gambiarra;
-    std::cout << "----- Component " << (unsigned int)pos << " -----" << std::endl;
     while(pos){
+        std::cout << "----- Component " << (unsigned int)pos << " -----" << std::endl;
         pos--;
         std::cout << "Component: ";
         std::cin >> code;
@@ -1079,13 +1089,11 @@ void spice_t::request_components(){
             std::cout << "Vth: ";
             std::cin >> netlist->row[pos].value[fet_vt];
         }
-        std::cout << "confirm? (n = no, anything else = yes): ";
+        std::cout << "confirm? (y/n): ";
         std::cin >> confirmation;
         if(confirmation == 'n'){
             pos++;
-
         }
-        std::cout << "----- Component " << (unsigned int)pos << " -----" << std::endl;
     }
 }
 void spice_t::show_result(){
