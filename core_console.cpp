@@ -145,6 +145,8 @@ public:
     double **JN;//Jacobian
     double **JNI;//inverse Jacobian
     double **updated_jacobian(double);//finds the numerical Jacobian
+    int *inverse_aux_P;
+    double **inverse_aux_A;
     void update_array(double *, double *);
     double eval_row(uint8_t, double *, double *);
     double* eval_f(double *, double *, double *);
@@ -156,7 +158,7 @@ class math_t {
 public:
 	static void sub(double *, double *, double *, uint8_t);
 	static void add(double *, double *, double *, uint8_t);
-	static double** invert(double **, double **, uint8_t, double);
+	static double** invert(double **, double **, uint8_t, double, double **, int *);
 private:
 	static int LUPDecompose(double **A, int N, double Tol, int *P);
 	static void LUPSolve(double **A, int *P, double *b, int N, double *x);
@@ -530,6 +532,8 @@ nod_t::nod_t(netlist_t *src) {
         R = new double*[dim];
         JN = new double*[dim];
         JNI = new double*[dim];
+        inverse_aux_P = new int[dim+1];
+        inverse_aux_A = new double*[dim];
 		pos = dim;
 		while (pos) {
 			pos--;
@@ -550,6 +554,11 @@ nod_t::nod_t(netlist_t *src) {
 			pos--;
 			JNI[pos] = new double[dim];
 		}
+		pos = dim;
+		while (pos) {
+			pos--;
+			inverse_aux_A[pos] = new double[dim];
+		}
 		utils_t::zero_vect(X, dim);
 		utils_t::zero_vect(S0, dim);
 		utils_t::zero_matrix(G, dim, dim);
@@ -557,7 +566,7 @@ nod_t::nod_t(netlist_t *src) {
 		//utils_t::zero_matrix(JNI, dim, dim);
 		voltages = dim;
 		component_t::insert_all(G, X, netlist, components, &voltages);
-		math_t::invert(G, R, dim, NOD_R_TOL);
+		math_t::invert(G, R, dim, NOD_R_TOL, inverse_aux_A, inverse_aux_P);
 	}
 }
 nod_t::~nod_t() {
@@ -574,6 +583,7 @@ nod_t::~nod_t() {
     delete[] NT1;
     delete[] U1;
     delete[] update_array_temp;
+    delete[] inverse_aux_P;
 	uint8_t pos = dim;
 	if (dim) {
 		while (pos) {
@@ -599,6 +609,12 @@ nod_t::~nod_t() {
 			delete[] JNI[pos];
 		}
 		delete[] JNI;
+		pos = dim;
+		while (pos) {
+			pos--;
+			delete[] inverse_aux_A[pos];
+		}
+		delete[] inverse_aux_A;
 	}
 }
 
@@ -745,7 +761,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
              */
         //}
         first_sub_step = TRUE;
-        math_t::invert(updated_jacobian(jacobian_step), JNI, dim, jacobian_inverse_tol);
+        math_t::invert(updated_jacobian(jacobian_step), JNI, dim, jacobian_inverse_tol, inverse_aux_A, inverse_aux_P);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
         LT1 = utils_t::norm(T1, dim);
         utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
@@ -754,36 +770,36 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
             math_t::sub(S0, U1, S1, dim);
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
-            if(LFS1 > LFS0){
-                if(utils_t::norm(U1, dim) >= sub_step){
+            /*if(LFS1 > LFS0){
+                if(lambda*LT1 >= sub_step){
                     lambda /= 10;
-                    if((LFS1_best > LFS1) || first_sub_step){
+                    /*if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
                         utils_t::copy_vect(S1, S1_best, dim);
                         utils_t::copy_vect(FS1, FS1_best, dim);
                         LFS1_best = LFS1;
-                    }
+                    }*//*
                 }
                 else{
                     not_done = FALSE;
-                    if(first_sub_step){
+                    //if(first_sub_step){
                         utils_t::copy_vect(S1, S0, dim);
                         utils_t::copy_vect(FS1, FS0, dim);
                         LFS0 = LFS1;
-                    }
-                    else{
+                    //}
+                    /*else{
                         utils_t::copy_vect(S1_best, S0, dim);
                         utils_t::copy_vect(FS1_best, FS0, dim);
                         LFS0 = LFS1_best;
-                    }
+                    }*//*
                 }
-            }
-            else{
+            }*/
+            //else{
                 not_done = FALSE;
                 utils_t::copy_vect(S1, S0, dim);
                 utils_t::copy_vect(FS1, FS0, dim);
                 LFS0 = LFS1;
-            }
+            //}
         }
     }
     return k;
@@ -835,7 +851,7 @@ int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
 			A[imax] = ptr;
 
 			//counting pivots starting from N (for determinant)
-			P[N]++;
+			(P[N])++;
 		}
 
 		for (j = i + 1; j < N; j++) {
@@ -897,24 +913,10 @@ double math_t::LUPDeterminant(double **A, int *P, int N) {
 	else
 		return -det;
 }
-double** math_t::invert(double **in, double** out, uint8_t dim, double tol) {
-	int *P = new int[dim];
-	double ** A;
-	A = new double*[dim];
-	uint8_t pos = dim;
-	while (pos) {
-		pos--;
-		A[pos] = new double[dim];
-	}
+double** math_t::invert(double **in, double** out, uint8_t dim, double tol, double **A, int *P) {
 	utils_t::copy_matrix(in, A, dim, dim);
 	math_t::LUPDecompose(A, dim, tol, P);
 	math_t::LUPInvert(A, P, dim, out);
-	pos = dim;
-	while (pos) {
-		pos--;
-		delete[] A[pos];
-	}
-	delete[] A;
 	return out;
 }
 
@@ -948,6 +950,7 @@ spice_t::spice_t(){
 }
 spice_t::~spice_t(){
     delete netlist;
+    delete solver;
 }
 void spice_t::show_init_screen(void){
     std::cout << "BSpice Alpha" << std::endl;
