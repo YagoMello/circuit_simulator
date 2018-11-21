@@ -81,10 +81,10 @@ const char* current_source_code = "cs";
 const char* capacitor_code = "cap";
 const char* inductor_code = "ind";
 const char* diode_code = "d";
-const char* bjt_npn_code = "BJT NPN";
-const char* bjt_pnp_code = "BJT PNP";
-const char* fet_n_code = "NMOS";
-const char* fet_p_code = "PMOS";
+const char* bjt_npn_code = "bjt npn";
+const char* bjt_pnp_code = "pnp";
+const char* fet_n_code = "nmos";
+const char* fet_p_code = "pmos";
 
 class utils_t {
 public:
@@ -948,7 +948,7 @@ spice_t::~spice_t(){
 }
 void spice_t::show_init_screen(void){
     std::cout << "BSpice Alpha" << endl;
-    std::cout << "Component code:"
+    std::cout << "Component code:";
     std::cout << resistor_name << ": " << resistor_code << std::endl;
     std::cout << voltage_source_name << ": " << voltage_source_code << std::endl;
     std::cout << current_source_name << ": " << current_source_code << std::endl;
