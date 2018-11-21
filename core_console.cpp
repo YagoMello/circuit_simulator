@@ -16,7 +16,10 @@ constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
 constexpr uint8_t COMPONENT_CODE_MAX_LENGTH = 16;
-constexpr double MATH_INVERSE_TOL = 10e-15;
+constexpr double NOD_DEF_ERROR_VECTOR_MAX_LENGTH = 1e-10;
+constexpr double NOD_DEF_JACOBIAN_STEP = 1e-10;
+constexpr double NOD_DEF_JNI_TOL = 1e-10;
+constexpr double NOD_R_TOL = 1e-14;
 double GMIN;
 //NODE_REF
 //2 port
@@ -145,7 +148,7 @@ public:
     void update_array(double *, double *);
     double eval_row(uint8_t, double *, double *);
     double* eval_f(double *, double *, double *);
-	uint32_t iterate(uint32_t, double, double, double);
+	uint32_t iterate(uint32_t, double, double, double, double);
     nod_t(netlist_t *source);
     ~nod_t(void);
 };
@@ -153,7 +156,7 @@ class math_t {
 public:
 	static void sub(double *, double *, double *, uint8_t);
 	static void add(double *, double *, double *, uint8_t);
-	static double** invert(double **, double **, uint8_t);
+	static double** invert(double **, double **, uint8_t, double);
 private:
 	static int LUPDecompose(double **A, int N, double Tol, int *P);
 	static void LUPSolve(double **A, int *P, double *b, int N, double *x);
@@ -554,7 +557,7 @@ nod_t::nod_t(netlist_t *src) {
 		//utils_t::zero_matrix(JNI, dim, dim);
 		voltages = dim;
 		component_t::insert_all(G, X, netlist, components, &voltages);
-		math_t::invert(G, R, dim);
+		math_t::invert(G, R, dim, NOD_R_TOL);
 	}
 }
 nod_t::~nod_t() {
@@ -645,7 +648,7 @@ double* nod_t::eval_f(double *yy, double *xx, double *output) {
 	}
 	return output;
 }
-uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double jacobian_step) {
+uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double jacobian_step, double jacobian_inverse_tol) {
     uint8_t unlimited = !k;
     uint8_t not_done;
     uint8_t first_sub_step;
@@ -742,7 +745,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
              */
         //}
         first_sub_step = TRUE;
-        math_t::invert(updated_jacobian(jacobian_step), JNI, dim);
+        math_t::invert(updated_jacobian(jacobian_step), JNI, dim, jacobian_inverse_tol);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
         LT1 = utils_t::norm(T1, dim);
         utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
@@ -894,7 +897,7 @@ double math_t::LUPDeterminant(double **A, int *P, int N) {
 	else
 		return -det;
 }
-double** math_t::invert(double **in, double** out, uint8_t dim) {
+double** math_t::invert(double **in, double** out, uint8_t dim, double tol) {
 	int *P = new int[dim];
 	double ** A;
 	A = new double*[dim];
@@ -904,7 +907,7 @@ double** math_t::invert(double **in, double** out, uint8_t dim) {
 		A[pos] = new double[dim];
 	}
 	utils_t::copy_matrix(in, A, dim, dim);
-	math_t::LUPDecompose(A, dim, MATH_INVERSE_TOL, P);
+	math_t::LUPDecompose(A, dim, tol, P);
 	math_t::LUPInvert(A, P, dim, out);
 	pos = dim;
 	while (pos) {
@@ -967,6 +970,7 @@ void spice_t::simulate(){
     double step;
     double close_enough;
     double jacobian_step;
+    double jacobian_tolerance;
     std::cout << "Iterations (0 = unlimited): ";
     std::cin >> iterations;
     std::cout << "Bad step max length [V] (0 = default): ";
@@ -974,10 +978,13 @@ void spice_t::simulate(){
     step = step ? step : 1e-3;
     std::cout << "Error vector max length [V] (0 = default): ";
     std::cin >> close_enough;
-    close_enough = close_enough ? close_enough : 1e-6;
+    close_enough = close_enough ? close_enough : NOD_DEF_ERROR_VECTOR_MAX_LENGTH;
     std::cout << "Numeric derivative step [V] (0 = default): ";
     std::cin >> jacobian_step;
-    jacobian_step = jacobian_step ? jacobian_step : 1e-10;
+    jacobian_step = jacobian_step ? jacobian_step : NOD_DEF_JACOBIAN_STEP;
+    std::cout << "Jacobian inverse tolerance (0 = default): ";
+    std::cin >> jacobian_tolerance;
+    jacobian_tolerance = jacobian_tolerance ? jacobian_tolerance : NOD_DEF_JNI_TOL;
     std::cout << "Initial guess? (y/n): ";
     std::cin >> initial_guess;
     while(pos && (initial_guess != 'n')){
@@ -985,7 +992,7 @@ void spice_t::simulate(){
         pos--;
         std::cin >> solver->S0[pos];
     }
-    iterations -= solver->iterate(iterations, step, close_enough, jacobian_step);
+    iterations -= solver->iterate(iterations, step, close_enough, jacobian_step, jacobian_tolerance);
 }
 void spice_t::request_components(){
     char code[COMPONENT_CODE_MAX_LENGTH];
@@ -1108,6 +1115,9 @@ void spice_t::show_voltages(){
     while(pos){
         pos--;
         switch(netlist->row[pos].type){
+        case(current_source):
+            std::cout << netlist->row[pos].alias << ": " << (solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1]) << "V" <<std::endl;
+            break;
         case(fet_n):
             std::cout << netlist->row[pos].alias << " - Vds: " << (solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
             std::cout << netlist->row[pos].alias << " - Vgs: " << (solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<std::endl;
@@ -1130,6 +1140,7 @@ void spice_t::show_statistics(){
 using namespace std;
 int main() {
     spice_t::show_init_screen();
+    cout << "-----" << endl;
 	spice_t spice;
 	spice.simulate();
 	cout << "-----" << endl;
