@@ -1379,6 +1379,7 @@ void spice_t::small_signal_analysis(void){
 }
 void spice_t::show_result(){
     uint8_t pos = netlist->nodes;
+    char str[32];
     uint8_t line = 0;
     while (pos){
         pos--;
@@ -1395,6 +1396,7 @@ void spice_t::show_result(){
 }
 void spice_t::show_voltages(){
     uint16_t pos = netlist->components;
+    char str[32];
     uint8_t line = 0;
     while(pos){
         pos--;
@@ -1429,6 +1431,7 @@ void spice_t::show_voltages(){
 }
 void spice_t::show_currents(){
     uint16_t pos = netlist->components;
+    char str[32];
     uint8_t line = 0;
     while(pos){
         pos--;
@@ -1457,6 +1460,7 @@ void spice_t::show_currents(){
     wait_key_pressed();
 }
 void spice_t::show_statistics(){
+    char str[32];
     csl << "LFS0: " << utils_nspire_t::double_to_ascii(solver->LFS0, str) << nio::endl;
     csl << "Iterations: " << (int)iterations << nio::endl;
 }
