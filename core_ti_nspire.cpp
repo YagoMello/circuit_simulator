@@ -3,6 +3,8 @@
 #include <inttypes.h>
 #include <math.h>
 #include <cstdlib>
+#include <string.h>
+
 
 #ifndef TRUE
 #define TRUE 1
@@ -17,7 +19,11 @@ nio::console csl;
 constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
-constexpr double MATH_INVERSE_TOL = 10e-15;
+constexpr uint8_t COMPONENT_CODE_MAX_LENGTH = 16;
+constexpr double NOD_DEF_ERROR_VECTOR_MAX_LENGTH = 1e-10;
+constexpr double NOD_DEF_JACOBIAN_STEP = 1e-10;
+constexpr double NOD_DEF_JNI_TOL = 1e-10;
+constexpr double NOD_R_TOL = 1e-14;
 double GMIN;
 //NODE_REF
 //2 port
@@ -25,6 +31,9 @@ constexpr uint8_t positive = 0;
 constexpr uint8_t negative = 1;
 //voltage_source trick
 constexpr uint8_t hidden = 2;
+//current_source
+constexpr uint8_t from = 0;
+constexpr uint8_t to = 1;
 //mosfet
 constexpr uint8_t fet_source = 0;
 constexpr uint8_t fet_drain = 1;
@@ -33,8 +42,13 @@ constexpr uint8_t fet_gate = 2;
 //VALUE_REF
 //voltage_source
 constexpr uint8_t voltage = 0;
+//current_source
+constexpr uint8_t current = 0;
 //resistor
 constexpr uint8_t resistance = 0;
+//diode
+constexpr uint8_t diode_is = 0;
+constexpr uint8_t diode_vt = 1;
 //mosfet
 constexpr uint8_t fet_w = 0;
 constexpr uint8_t fet_l = 1;
@@ -54,6 +68,128 @@ constexpr uint16_t bjt_pnp = 7;
 constexpr uint16_t fet_n = 8;
 constexpr uint16_t fet_p = 9;
 
+//NAME_REF
+const char* resistor_name = "Resistor";
+const char* voltage_source_name = "Voltage Source";
+const char* current_source_name = "Current Source";
+const char* capacitor_name = "Capacitor";
+const char* inductor_name = "Inductor";
+const char* diode_name = "Diode";
+const char* bjt_npn_name = "BJT NPN";
+const char* bjt_pnp_name = "BJT PNP";
+const char* fet_n_name = "N channel MOSFET";
+const char* fet_p_name = "P channel MOSFET";
+
+
+//CODE_REF
+const char* resistor_code = "r";
+const char* voltage_source_code = "vs";
+const char* current_source_code = "cs";
+const char* capacitor_code = "cap";
+const char* inductor_code = "ind";
+const char* diode_code = "d";
+const char* bjt_npn_code = "bjt npn";
+const char* bjt_pnp_code = "bjt pnp";
+const char* fet_n_code = "nmos";
+const char* fet_p_code = "pmos";
+
+class utils_nspire_t{
+public:
+    static char* double_to_ascii(double, char*);
+    static char* safe_gets(char*);
+    static void print_double(double);
+    static void print_uint8(uint8_t);
+};
+char* utils_nspire_t::double_to_ascii(double number, char *str) {
+    //copied from androider @ stackoverflow
+    // handle special cases
+    const double PRECISION = 0.00000000000001;
+    const int MAX_NUMBER_STRING_SIZE = 32;
+    double n = number;
+    char *s = str;
+    if (isnan(n)) {
+        strcpy(s, "nan");
+    } else if (isinf(n)) {
+        strcpy(s, "inf");
+    } else if (n == 0.0) {
+        strcpy(s, "0");
+    } else {
+        int digit, m, m1;
+        char *c = s;
+        int neg = (n < 0);
+        if (neg)
+            n = -n;
+        // calculate magnitude
+        m = log10(n);
+        int useExp = (m >= 14 || (neg && m >= 9) || m <= -9);
+        if (neg)
+            *(c++) = '-';
+        // set up for scientific notation
+        if (useExp) {
+            if (m < 0)
+               m -= 1.0;
+            n = n / pow(10.0, m);
+            m1 = m;
+            m = 0;
+        }
+        if (m < 1.0) {
+            m = 0;
+        }
+        // convert the number
+        while (n > PRECISION || m >= 0) {
+            double weight = pow(10.0, m);
+            if (weight > 0 && !isinf(weight)) {
+                digit = floor(n / weight);
+                n -= (digit * weight);
+                *(c++) = '0' + digit;
+            }
+            if (m == 0 && n > 0)
+                *(c++) = '.';
+            m--;
+        }
+        if (useExp) {
+            // convert the exponent
+            int i, j;
+            *(c++) = 'e';
+            if (m1 > 0) {
+                *(c++) = '+';
+            } else {
+                *(c++) = '-';
+                m1 = -m1;
+            }
+            m = 0;
+            while (m1 > 0) {
+                *(c++) = '0' + m1 % 10;
+                m1 /= 10;
+                m++;
+            }
+            c -= m;
+            for (i = 0, j = m-1; i<j; i++, j--) {
+                // swap without temporary
+                c[i] ^= c[j];
+                c[j] ^= c[i];
+                c[i] ^= c[j];
+            }
+            c += m;
+        }
+        *(c) = '\0';
+    }
+    return s;
+}
+char* utils_nspire_t::safe_gets(char *out){
+    do{
+        csl >> out;
+    }while(!out[0]);
+    return out;
+}
+void utils_nspire_t::print_double(double num){
+    char str[32];
+    csl << double_to_ascii(num, str);
+}
+void utils_nspire_t::print_uint8(uint8_t value){
+    csl << (int)value;
+}
+
 class utils_t {
 public:
 	template <typename T> static void copy_vect(T *, T*, uint16_t);
@@ -65,7 +201,6 @@ public:
 	template <typename T> static void mult_mat_vect(T**, T*, T*, uint16_t, uint16_t);
 	template <typename T> static void mult_vect_num(T*, T, T*, uint16_t);
 	template <typename T> static double norm(T*, uint16_t);
-	static char* double_to_ascii(double, char*);
 };
 class netlist_t {
 public:
@@ -80,9 +215,17 @@ class component_t {
 public:
 	static void insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos);
 	static void nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
-	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void voltage_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void current_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static double voltage_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double current_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double resistor_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double diode_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
 };
 class nod_t{
 public:
@@ -109,10 +252,12 @@ public:
     double **JN;//Jacobian
     double **JNI;//inverse Jacobian
     double **updated_jacobian(double);//finds the numerical Jacobian
+    int *inverse_aux_P;
+    double **inverse_aux_A;
     void update_array(double *, double *);
     double eval_row(uint8_t, double *, double *);
     double* eval_f(double *, double *, double *);
-	uint32_t iterate(uint32_t, double, double, double);
+	uint32_t iterate(uint32_t, double, double, double, double);
     nod_t(netlist_t *source);
     ~nod_t(void);
 };
@@ -120,7 +265,7 @@ class math_t {
 public:
 	static void sub(double *, double *, double *, uint8_t);
 	static void add(double *, double *, double *, uint8_t);
-	static double** invert(double **, double **, uint8_t);
+	static double** invert(double **, double **, uint8_t, double, double **, int *);
 private:
 	static int LUPDecompose(double **A, int N, double Tol, int *P);
 	static void LUPSolve(double **A, int *P, double *b, int N, double *x);
@@ -198,88 +343,13 @@ template <typename T> double utils_t::norm(T* vect, uint16_t len){
     }
     return sqrt(acc);
 }
-char* utils_t::double_to_ascii(double number, char *str) {
-    //copied from androider @ stackoverflow
-    // handle special cases
-    const double PRECISION = 0.00000000000001;
-    const int MAX_NUMBER_STRING_SIZE = 32;
-    double n = number;
-    char *s = str;
-    if (isnan(n)) {
-        strcpy(s, "nan");
-    } else if (isinf(n)) {
-        strcpy(s, "inf");
-    } else if (n == 0.0) {
-        strcpy(s, "0");
-    } else {
-        int digit, m, m1;
-        char *c = s;
-        int neg = (n < 0);
-        if (neg)
-            n = -n;
-        // calculate magnitude
-        m = log10(n);
-        int useExp = (m >= 14 || (neg && m >= 9) || m <= -9);
-        if (neg)
-            *(c++) = '-';
-        // set up for scientific notation
-        if (useExp) {
-            if (m < 0)
-               m -= 1.0;
-            n = n / pow(10.0, m);
-            m1 = m;
-            m = 0;
-        }
-        if (m < 1.0) {
-            m = 0;
-        }
-        // convert the number
-        while (n > PRECISION || m >= 0) {
-            double weight = pow(10.0, m);
-            if (weight > 0 && !isinf(weight)) {
-                digit = floor(n / weight);
-                n -= (digit * weight);
-                *(c++) = '0' + digit;
-            }
-            if (m == 0 && n > 0)
-                *(c++) = '.';
-            m--;
-        }
-        if (useExp) {
-            // convert the exponent
-            int i, j;
-            *(c++) = 'e';
-            if (m1 > 0) {
-                *(c++) = '+';
-            } else {
-                *(c++) = '-';
-                m1 = -m1;
-            }
-            m = 0;
-            while (m1 > 0) {
-                *(c++) = '0' + m1 % 10;
-                m1 /= 10;
-                m++;
-            }
-            c -= m;
-            for (i = 0, j = m-1; i<j; i++, j--) {
-                // swap without temporary
-                c[i] ^= c[j];
-                c[j] ^= c[i];
-                c[i] ^= c[j];
-            }
-            c += m;
-        }
-        *(c) = '\0';
-    }
-    return s;
-}
 
 struct netlist_t::row_t{
     uint8_t type;
     double value[NETLIST_PARAM_MAX];
     uint8_t node[NETLIST_CONNECTION_MAX];
     void (*update)(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    double (*current)(uint8_t netlist_pos, netlist_t* netlist, double *data);
     char alias[NETLIST_ALIAS_SIZE];
 };
 
@@ -311,11 +381,25 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 G[*vs_pos - 1][netlist->row[netlist_pos].node[positive] - 1] = -1;
             }
             netlist->row[netlist_pos].node[hidden] = *vs_pos;
-            netlist->row[netlist_pos].update = voltage_f;
+            netlist->row[netlist_pos].update = voltage_source_f;
+            netlist->row[netlist_pos].current = voltage_source_cf;
             (*vs_pos)--;
             break;
         case(current_source):
-            //remember to += memory (current)
+            if (netlist->row[netlist_pos].node[positive]) {
+                G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[positive] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[negative]) {
+                    G[netlist->row[netlist_pos].node[positive] - 1][netlist->row[netlist_pos].node[negative] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[negative]) {
+                G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[negative] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[positive]) {
+                    G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = current_source_f;
+            netlist->row[netlist_pos].current = current_source_cf;
             break;
         case(resistor):
             if (netlist->row[netlist_pos].node[positive]) {
@@ -331,6 +415,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = nop_f;
+            netlist->row[netlist_pos].current = resistor_cf;
             break;
         case(capacitor):
 
@@ -351,6 +436,8 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                     G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
                 }
             }
+            netlist->row[netlist_pos].update = diode_f;
+            netlist->row[netlist_pos].current = diode_cf;
             break;
         case (fet_n):
             if (netlist->row[netlist_pos].node[fet_source]) {
@@ -358,14 +445,30 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
                 }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
                 G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
                 }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                }
             }
             netlist->row[netlist_pos].update = fet_n_f;
+            netlist->row[netlist_pos].current = fet_n_cf;
             break;
         case(fet_p):
             if (netlist->row[netlist_pos].node[fet_source]) {
@@ -381,6 +484,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = fet_p_f;
+            netlist->row[netlist_pos].current = fet_p_cf;
             break;
         default:
             break;
@@ -390,8 +494,35 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
 
 void component_t::nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
 }
-void component_t::voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+void component_t::voltage_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     target[netlist->row[netlist_pos].node[hidden] - 1] = netlist->row[netlist_pos].value[voltage];
+}
+void component_t::current_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    if(netlist->row[netlist_pos].node[from]){
+        target[netlist->row[netlist_pos].node[from] - 1] -= netlist->row[netlist_pos].value[current];
+    }
+    if(netlist->row[netlist_pos].node[to]){
+        target[netlist->row[netlist_pos].node[to] - 1] += netlist->row[netlist_pos].value[current];
+    }
+}
+void component_t::diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double d_current;
+    double d_is = netlist->row[netlist_pos].value[diode_is];
+    double d_vt = netlist->row[netlist_pos].value[diode_vt];
+    double d_vd = 0;
+    if(netlist->row[netlist_pos].node[positive]){
+        d_vd += data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        d_vd -= data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    d_current = d_is * (exp(d_vd / d_vt) - 1);
+    if(netlist->row[netlist_pos].node[positive]){
+        target[netlist->row[netlist_pos].node[positive] - 1] -= d_current;
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        target[netlist->row[netlist_pos].node[negative] - 1] += d_current;
+    }
 }
 void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     double vs, vd, vg, vds, vgs, id, w, l, kp, vt, lambda;
@@ -480,6 +611,113 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     }
 }
 
+double component_t::voltage_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    return data[netlist->row[netlist_pos].node[hidden] - 1];
+}
+double component_t::current_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    return netlist->row[netlist_pos].value[current];
+}
+double component_t::resistor_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double r_vp = 0;
+    double r_vn = 0;
+    double r_r = netlist->row[netlist_pos].value[resistance];
+    if(netlist->row[netlist_pos].node[positive]){
+        r_vp = data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        r_vn = data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    return (r_vp - r_vn)/r_r;
+}
+double component_t::diode_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double d_is = netlist->row[netlist_pos].value[diode_is];
+    double d_vt = netlist->row[netlist_pos].value[diode_vt];
+    double d_vd = 0;
+    if(netlist->row[netlist_pos].node[positive]){
+        d_vd += data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        d_vd -= data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    return d_is * (exp(d_vd / d_vt) - 1);
+}
+double component_t::fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs <= vt){
+        return 0;
+    }
+    else if(vds<(vgs-vt)){
+        return (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        return (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+}
+double component_t::fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs >= vt){
+        return 0;
+    }
+    else if(vds>(vgs-vt)){
+        return -(kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        return -(kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+}
+
+
+
 nod_t::nod_t(netlist_t *src) {
 	uint8_t pos = src->components;
 	uint8_t voltages;
@@ -515,6 +753,8 @@ nod_t::nod_t(netlist_t *src) {
         R = new double*[dim];
         JN = new double*[dim];
         JNI = new double*[dim];
+        inverse_aux_P = new int[dim+1];
+        inverse_aux_A = new double*[dim];
 		pos = dim;
 		while (pos) {
 			pos--;
@@ -535,6 +775,11 @@ nod_t::nod_t(netlist_t *src) {
 			pos--;
 			JNI[pos] = new double[dim];
 		}
+		pos = dim;
+		while (pos) {
+			pos--;
+			inverse_aux_A[pos] = new double[dim];
+		}
 		utils_t::zero_vect(X, dim);
 		utils_t::zero_vect(S0, dim);
 		utils_t::zero_matrix(G, dim, dim);
@@ -542,7 +787,7 @@ nod_t::nod_t(netlist_t *src) {
 		//utils_t::zero_matrix(JNI, dim, dim);
 		voltages = dim;
 		component_t::insert_all(G, X, netlist, components, &voltages);
-		math_t::invert(G, R, dim);
+		math_t::invert(G, R, dim, NOD_R_TOL, inverse_aux_A, inverse_aux_P);
 	}
 }
 nod_t::~nod_t() {
@@ -559,6 +804,7 @@ nod_t::~nod_t() {
     delete[] NT1;
     delete[] U1;
     delete[] update_array_temp;
+    delete[] inverse_aux_P;
 	uint8_t pos = dim;
 	if (dim) {
 		while (pos) {
@@ -584,12 +830,19 @@ nod_t::~nod_t() {
 			delete[] JNI[pos];
 		}
 		delete[] JNI;
+		pos = dim;
+		while (pos) {
+			pos--;
+			delete[] inverse_aux_A[pos];
+		}
+		delete[] inverse_aux_A;
 	}
 }
 
 double** nod_t::updated_jacobian(double jacobian_step) {
 	uint8_t i = dim;
 	uint8_t j;
+	update_array(S0, X);
 	utils_t::copy_vect(S0, S0_temp, dim);
 	while (i) {
 		i--;
@@ -597,7 +850,6 @@ double** nod_t::updated_jacobian(double jacobian_step) {
 		while (j) {
 			j--;
 			S0_temp[j] += jacobian_step;
-			update_array(S0, X);
 			update_array(S0_temp, X_temp);
 			JN[i][j] = (eval_row(i, S0_temp, X_temp) - eval_row(i, S0, X)) / jacobian_step;
 			S0_temp[j] -= jacobian_step;
@@ -633,7 +885,7 @@ double* nod_t::eval_f(double *yy, double *xx, double *output) {
 	}
 	return output;
 }
-uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double jacobian_step) {
+uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double jacobian_step, double jacobian_inverse_tol) {
     uint8_t unlimited = !k;
     uint8_t not_done;
     uint8_t first_sub_step;
@@ -730,7 +982,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
              */
         //}
         first_sub_step = TRUE;
-        math_t::invert(updated_jacobian(jacobian_step), JNI, dim);
+        math_t::invert(updated_jacobian(jacobian_step), JNI, dim, jacobian_inverse_tol, inverse_aux_A, inverse_aux_P);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
         LT1 = utils_t::norm(T1, dim);
         utils_t::mult_vect_num(T1, 1/LT1, NT1, dim);
@@ -740,7 +992,7 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
             eval_f(S1, X, FS1);
             LFS1 = utils_t::norm(FS1, dim);
             if(LFS1 > LFS0){
-                if(utils_t::norm(U1, dim) >= sub_step){
+                if(lambda*LT1 >= sub_step){
                     lambda /= 10;
                     if((LFS1_best > LFS1) || first_sub_step){
                         first_sub_step = FALSE;
@@ -820,7 +1072,7 @@ int math_t::LUPDecompose(double **A, int N, double Tol, int *P) {
 			A[imax] = ptr;
 
 			//counting pivots starting from N (for determinant)
-			P[N]++;
+			(P[N])++;
 		}
 
 		for (j = i + 1; j < N; j++) {
@@ -882,24 +1134,10 @@ double math_t::LUPDeterminant(double **A, int *P, int N) {
 	else
 		return -det;
 }
-double** math_t::invert(double **in, double** out, uint8_t dim) {
-	int *P = new int[dim];
-	double ** A;
-	A = new double*[dim];
-	uint8_t pos = dim;
-	while (pos) {
-		pos--;
-		A[pos] = new double[dim];
-	}
+double** math_t::invert(double **in, double** out, uint8_t dim, double tol, double **A, int *P) {
 	utils_t::copy_matrix(in, A, dim, dim);
-	math_t::LUPDecompose(A, dim, MATH_INVERSE_TOL, P);
+	math_t::LUPDecompose(A, dim, tol, P);
 	math_t::LUPInvert(A, P, dim, out);
-	pos = dim;
-	while (pos) {
-		pos--;
-		delete[] A[pos];
-	}
-	delete[] A;
 	return out;
 }
 
@@ -911,180 +1149,280 @@ public:
     netlist_t *netlist;
     nod_t *solver;
     void simulate(void);
-    void request_components();
+    void request_components(void);
+    void small_signal_analysis(void);
     void show_result(void);
     void show_voltages(void);
+    void show_currents(void);
     void show_statistics(void);
+    static void show_init_screen(void);
 };
 spice_t::spice_t(){
-    int nodes;
-    int components;
-    int gmin;
+    uint16_t nodes;
+    uint16_t components;
+    char str[32];
     csl << "Nodes: ";
-    csl >> nodes;
+    nodes = atoi(utils_nspire_t::safe_gets(str));
     csl << "Components: ";
-    csl >> components;
+    components = atoi(utils_nspire_t::safe_gets(str));
     csl << "GMIN (0 = default): ";
-    csl >> gmin;
-    GMIN = gmin ? gmin : 10e-12;
+    gmin = atoi(utils_nspire_t::safe_gets(str));;
+    gmin = gmin ? gmin : 10e-12;
     netlist = new netlist_t(nodes, components);
     request_components();
     solver = new nod_t(netlist);
 }
 spice_t::~spice_t(){
     delete netlist;
+    delete solver;
+}
+void spice_t::show_init_screen(void){
+    csl << "BSpice Alpha" << nio::endl;
+    csl << "GND = Node 0 = 0" << nio::endl;
+    csl << "Component code:" << nio::endl;
+    csl << resistor_name << ": " << resistor_code << nio::endl;
+    csl << voltage_source_name << ": " << voltage_source_code << nio::endl;
+    csl << current_source_name << ": " << current_source_code << nio::endl;
+    csl << capacitor_name << ": " << capacitor_code << nio::endl;
+    csl << inductor_name << ": " << inductor_code << nio::endl;
+    csl << diode_name << ": " << diode_code << nio::endl;
+    csl << bjt_npn_name << ": " << bjt_npn_code << nio::endl;
+    csl << bjt_pnp_name << ": " << bjt_pnp_code << nio::endl;
+    csl << fet_n_name << ": " << fet_n_code << nio::endl;
+    csl << fet_p_name << ": " << fet_p_code << nio::endl;
 }
 void spice_t::simulate(){
+    char initial_guess;
+    uint16_t pos = netlist->nodes;
     double step;
     double close_enough;
     double jacobian_step;
-    char strbuff[64];
+    double jacobian_tolerance;
     csl << "Iterations (0 = unlimited): ";
-    csl >> strbuff;
-    iterations = atof(strbuff);
+    iterations = atoi(utils_nspire_t::safe_gets(str));
     csl << "Bad step max length [V] (0 = default): ";
-    csl >> strbuff;
-    step = atof(strbuff);
+    step = atof(utils_nspire_t::safe_gets(str));
     step = step ? step : 1e-3;
     csl << "Error vector max length [V] (0 = default): ";
-    csl >> strbuff;
-    close_enough = atof(strbuff);
-    close_enough = close_enough ? close_enough : 1e-6;
+    close_enough = atof(utils_nspire_t::safe_gets(str));
+    close_enough = close_enough ? close_enough : NOD_DEF_ERROR_VECTOR_MAX_LENGTH;
     csl << "Numeric derivative step [V] (0 = default): ";
-    csl >> strbuff;
-    jacobian_step = atof(strbuff);
-    jacobian_step = jacobian_step ? jacobian_step : 1e-10;
-    iterations -= solver->iterate(iterations, step, close_enough, jacobian_step);
+    jacobian_step = atof(utils_nspire_t::safe_gets(str));
+    jacobian_step = jacobian_step ? jacobian_step : NOD_DEF_JACOBIAN_STEP;
+    csl << "Jacobian inverse tolerance (0 = default): ";
+    jacobian_tolerance = atof(utils_nspire_t::safe_gets(str));
+    jacobian_tolerance = jacobian_tolerance ? jacobian_tolerance : NOD_DEF_JNI_TOL;
+    csl << "Initial guess? (y/n): ";
+    csl >> initial_guess;
+    while(pos && (initial_guess != 'n')){
+        csl << "Node " << pos << ": ";
+        pos--;
+        solver->S0[pos] = atof(utils_nspire_t::safe_gets(str));
+    }
+    iterations -= solver->iterate(iterations, step, close_enough, jacobian_step, jacobian_tolerance);
 }
 void spice_t::request_components(){
-    uint16_t type;
+    char code[COMPONENT_CODE_MAX_LENGTH];
+    uint8_t confirmation;
     uint8_t pos = netlist->components;
+    char str[32];
     int gambiarra;
-    char strbuff[64];
     while(pos){
+        csl << "----- Component " << (unsigned int)pos << " -----" << nio::endl;
         pos--;
         csl << "Component: ";
-        csl >> gambiarra;
-        type = gambiarra;
+        utils_nspire_t::safe_gets(code); =
         csl << "Alias: ";
-        csl >> netlist->row[pos].alias;
-        switch(type){
-        case(resistor):
-            netlist->row[pos].type = type;
+        utils_nspire_t::safe_gets(netlist->row[pos].alias);
+        if(!strcmp(code, resistor_code)){
+            netlist->row[pos].type = resistor;
             csl << "Node +: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[positive] = gambiarra;
+            netlist->row[pos].node[positive] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Node -: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[negative] = gambiarra;
+            netlist->row[pos].node[negative] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Resistance: ";
-            csl >> strbuff;
-            netlist->row[pos].value[resistance] = atof(strbuff);
-            break;
-        case(voltage_source):
-            netlist->row[pos].type = type;
+            netlist->row[pos].value[resistance] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, voltage_source_code)){
+            netlist->row[pos].type = voltage_source;
             csl << "Node +: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[positive] = gambiarra;
+            netlist->row[pos].node[positive] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Node -: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[negative] = gambiarra;
+            netlist->row[pos].node[negative] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Voltage: ";
-            csl >> strbuff;
-            netlist->row[pos].value[voltage] = atof(strbuff);
-            break;
-        case(fet_n):
-            netlist->row[pos].type = type;
+            netlist->row[pos].value[voltage] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, current_source_code)){
+            netlist->row[pos].type = current_source;
+            csl << "Current from: ";
+            netlist->row[pos].node[from] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "to: ";
+            netlist->row[pos].node[to] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Current: ";
+            netlist->row[pos].value[current] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, diode_code)){
+            netlist->row[pos].type = diode;
+            csl << "Node +: ";
+            netlist->row[pos].node[from] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Node -: ";
+            netlist->row[pos].node[to] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Is: ";
+            netlist->row[pos].value[diode_is] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Vt: ";
+            netlist->row[pos].value[diode_vt] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, fet_n_code)){
+            netlist->row[pos].type = fet_n;
             csl << "Drain node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_drain] = gambiarra;
+            netlist->row[pos].node[fet_drain] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Source node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_source] = gambiarra;
+            netlist->row[pos].node[fet_source] = atoi(utils_nspire_t::safe_gets(str));
             csl << "Gate node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_gate] = gambiarra;
+            netlist->row[pos].node[fet_gate] = atoi(utils_nspire_t::safe_gets(str));
             csl << "W: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_w] = atof(strbuff);
+            netlist->row[pos].value[fet_w] = atof(utils_nspire_t::safe_gets(str));
             csl << "L: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_l] = atof(strbuff);
+            netlist->row[pos].value[fet_l] = atof(utils_nspire_t::safe_gets(str));
             csl << "Kp: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_kp] = atof(strbuff);
+            netlist->row[pos].value[fet_kp] = atof(utils_nspire_t::safe_gets(str));
             csl << "Lambda: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_lambda] = atof(strbuff);
+            netlist->row[pos].value[fet_lambda] = atof(utils_nspire_t::safe_gets(str));
             csl << "Vth: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_vt] = atof(strbuff);
-            break;
+            netlist->row[pos].value[fet_vt] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, fet_p_code)){
+            netlist->row[pos].type = fet_p;
+            csl << "Drain node: ";
+            netlist->row[pos].node[fet_drain] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Source node: ";
+            netlist->row[pos].node[fet_source] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Gate node: ";
+            netlist->row[pos].node[fet_gate] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "W: ";
+            netlist->row[pos].value[fet_w] = atof(utils_nspire_t::safe_gets(str));
+            csl << "L: ";
+            netlist->row[pos].value[fet_l] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Kp: ";
+            netlist->row[pos].value[fet_kp] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Lambda: ";
+            netlist->row[pos].value[fet_lambda] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Vth: ";
+            netlist->row[pos].value[fet_vt] = atof(utils_nspire_t::safe_gets(str));
+        }
+        csl << "confirm? (y/n): ";
+        csl >> confirmation;
+        if(confirmation == 'n'){
+            pos++;
+        }
+    }
+}
+void spice_t::small_signal_analysis(void){
+    uint8_t pos = netlist->components;
+    char str[32];
+    while(pos){
+        pos--;
+        switch(netlist->row[pos].type){
         case(fet_p):
-            netlist->row[pos].type = type;
-            csl << "Drain node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_drain] = gambiarra;
-            csl << "Source node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_source] = gambiarra;
-            csl << "Gate node: ";
-            csl >> gambiarra;
-            netlist->row[pos].node[fet_gate] = gambiarra;
-            csl << "W: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_w] = atof(strbuff);
-            csl << "L: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_l] = atof(strbuff);
-            csl << "Kp: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_kp] = atof(strbuff);
-            csl << "Lambda: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_lambda] = atof(strbuff);
-            csl << "Vth: ";
-            csl >> strbuff;
-            netlist->row[pos].value[fet_vt] = atof(strbuff);
+            //don't insert break here
+        case(fet_n):
+            double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
+            w = netlist->row[pos].value[fet_w];
+            l = netlist->row[pos].value[fet_l];
+            kp = netlist->row[pos].value[fet_kp];
+            vt = netlist->row[pos].value[fet_vt];
+            lambda = netlist->row[pos].value[fet_lambda];
+            id = netlist->row[pos].current(pos, netlist, solver->S0);
+            if(netlist->row[pos].node[fet_source]){
+                vs = solver->S0[netlist->row[pos].node[fet_source] - 1];
+            }
+            else{
+                vs = 0;
+            }
+            if(netlist->row[pos].node[fet_drain]){
+                vd = solver->S0[netlist->row[pos].node[fet_drain] - 1];
+            }
+            else{
+                vd = 0;
+            }
+            if(netlist->row[pos].node[fet_gate]){
+                vg = solver->S0[netlist->row[pos].node[fet_gate] - 1];
+            }
+            else{
+                vg = 0;
+            }
+            vgs = vg-vs;
+            vds = vd-vs;
+            if(vds >= vgs-vt){
+                csl << netlist->row[pos].alias << " - pentodo - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - pentodo - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt)) << nio::endl;
+            }
+            else{
+                csl << netlist->row[pos].alias << " - triodo - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds)))) << nio::endl;
+                csl << netlist->row[pos].alias << " - triodo - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds)) << nio::endl;
+            }
+        default:
             break;
         }
     }
 }
 void spice_t::show_result(){
-    int pos = netlist->nodes;
-    char tempstr[32];
+    uint8_t pos = netlist->nodes;
     while (pos){
         pos--;
-        csl << "Node " << pos+1 << ": " << utils_t::double_to_ascii(solver->S0[pos], tempstr) << "V" << nio::endl;
+        csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos]) << "V" << nio::endl;
     }
 }
 void spice_t::show_voltages(){
     uint16_t pos = netlist->components;
-    char tempstr[32];
     while(pos){
         pos--;
         switch(netlist->row[pos].type){
+        case(current_source):
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1]) << "V" <<nio::endl;
+            break;
         case(fet_n):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], tempstr) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], tempstr) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
             break;
         case(fet_p):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], tempstr) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], tempstr) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
             break;
         default:
-            csl << netlist->row[pos].alias << ": " << utils_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], tempstr) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1]) << "V" <<nio::endl;
+            break;
+        }
+    }
+}
+void spice_t::show_currents(){
+    uint16_t pos = netlist->components;
+    while(pos){
+        pos--;
+        switch(netlist->row[pos].type){
+        case(current_source):
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            break;
+        case(fet_n):
+            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            break;
+        case(fet_p):
+            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            break;
+        default:
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
             break;
         }
     }
 }
 void spice_t::show_statistics(){
-    char tempstr[32];
-    csl << "LFS0: " << utils_t::double_to_ascii(solver->LFS0, tempstr) << nio::endl;
+    csl << "LFS0: " << utils_nspire_t::double_to_ascii(solver->LFS0) << nio::endl;
     csl << "Iterations: " << (int)iterations << nio::endl;
 }
 
 int main() {
+    spice_t::show_init_screen();
+    csl << "-----" << nio::endl;
 	spice_t spice;
 	spice.simulate();
 	csl << "-----" << nio::endl;
@@ -1093,6 +1431,10 @@ int main() {
     spice.show_result();
     csl << "-----" << nio::endl;
     spice.show_voltages();
+    csl << "-----" << nio::endl;
+    spice.show_currents();
+    csl << "-----" << nio::endl;
+    spice.small_signal_analysis();
     wait_key_pressed();
 	return 0;
 }
