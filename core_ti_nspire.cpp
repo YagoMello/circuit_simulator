@@ -93,6 +93,7 @@ const char* bjt_pnp_code = "bjt pnp";
 const char* fet_n_code = "nmos";
 const char* fet_p_code = "pmos";
 
+
 class utils_nspire_t{
 public:
     static char* double_to_ascii(double, char*);
@@ -554,7 +555,7 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     if(vgs <= vt){
         id = 0;
     }
-    else if(vd<(vg-vt)){
+    else if(vds<(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
     }
     else{
@@ -597,7 +598,7 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     if(vgs >= vt){
         id = 0;
     }
-    else if(vd>(vg-vt)){
+    else if(vds>(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
     }
     else{
@@ -901,86 +902,6 @@ uint32_t nod_t::iterate(uint32_t k, double sub_step, double error_max, double ja
         }
         lambda = 1;
         not_done = TRUE;
-        //while (not_done){
-            /* T1 = Jn^-1*F(S0);
-             * S1 = S0 - Lam * T1;
-             * if(len(F(S1)) > len(F(S0))){
-             *     if(Lam*len(T1) > STEP){
-             *         Lam /= 10;
-             *     }
-             *     else{
-             *         S0 -= STEP*T1/len(T1);
-             *         not_done = FALSE;
-             *     }
-             * }
-             * else{
-             *     S0 = S1;
-             *     not_done = FALSE;
-             * }
-             */
-
-            /* "static double FS0"
-             * "static double LFS0"
-             * JNI = Jn^-1;
-             * T1 = JNI*FS0;
-             * LT1 = len(T1);
-             * NT1 = T1/LT1;
-             * U1 = Lam*T1;
-             * S1 = S0 - U1;
-             * FS1 = F(S1);
-             * LFS1 = len(FS1);
-             * if(LFS1 > LFS0){
-             *     if(U1 > STEP){
-             *         Lam /= 10;
-             *     }
-             *     else{
-             *         S0 -= STEP*NT1;
-             *         not_done = FALSE;
-             *     }
-             * }
-             * else{
-             *     S0 = S1;
-             *     FS0  = FS1;
-             *     LFS0 = LFS1;
-             *     not_done = FALSE;
-             * }
-             */
-
-            /* "static double FS0"
-             * "static double LFS0"
-             * "FIRST = TRUE"
-             * "BEST_S1";
-             * "BEST_LFS1";
-             * JNI = Jn^-1;  //<<<BEFORE WHILE
-             * T1 = JNI*FS0; //<<<BEFORE WHILE
-             * LT1 = len(T1);
-             * NT1 = T1/LT1;
-             * U1 = Lam*T1;
-             * S1 = S0 - U1;
-             * FS1 = F(S1);
-             * LFS1 = len(FS1);
-             * if(LFS1 >= LFS0){
-             *     if(U1 >= STEP){
-             *         Lam /= 10;
-             *         if((BEST_LFS1 > LFS1) || FIRST){
-             *             FIRST = FALSE;
-             *             BEST_S1 = S1;
-             *             BEST_LFS1 = LFS1;
-             *         }
-             *     }
-             *     else{
-             *         S0 = BEST_S1;
-             *         not_done = FALSE;
-             *     }
-             * }
-             * else{
-             *     S0 = S1;
-             *     FS0  = FS1;
-             *     LFS0 = LFS1;
-             *     not_done = FALSE;
-             * }
-             */
-        //}
         first_sub_step = TRUE;
         math_t::invert(updated_jacobian(jacobian_step), JNI, dim, jacobian_inverse_tol, inverse_aux_A, inverse_aux_P);
         utils_t::mult_mat_vect(JNI, FS0, T1, dim, dim);
@@ -1317,17 +1238,17 @@ void spice_t::request_components(){
             pos++;
         }
     }
-    csl << "Press any key to continue... ";
+    csl << "Press any key to continue... " << nio::endl;
     wait_key_pressed();
 }
-void spice_t::small_signal_analysis(void){
+void spice_t::small_signal_analysis(){
     uint8_t pos = netlist->components;
     char str[32];
     uint8_t line = 0;
     while(pos){
         pos--;
         if(line >= 28){
-            csl << "Press any key to continue... ";
+            csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
         }
@@ -1375,7 +1296,7 @@ void spice_t::small_signal_analysis(void){
             break;
         }
     }
-    csl << "Press any key to continue... ";
+    csl << "Press any key to continue... " << nio::endl;
     wait_key_pressed();
 }
 void spice_t::show_result(){
@@ -1385,14 +1306,14 @@ void spice_t::show_result(){
     while (pos){
         pos--;
         if(line == 29){
-            csl << "Press any key to continue... ";
+            csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
         }
-        csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos], str) << "V" << nio::endl;
+        csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos], str) << " V" << nio::endl;
         line++;
     }
-    csl << "Press any key to continue... ";
+    csl << "Press any key to continue... " << nio::endl;
     wait_key_pressed();
 }
 void spice_t::show_voltages(){
@@ -1402,32 +1323,32 @@ void spice_t::show_voltages(){
     while(pos){
         pos--;
         if(line >= 28){
-            csl << "Press any key to continue... ";
+            csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
         }
         switch(netlist->row[pos].type){
         case(current_source):
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1], str) << " V" <<nio::endl;
             line++;
             break;
         case(fet_n):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
             line += 2;
             break;
         case(fet_p):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
             line += 2;
             break;
         default:
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], str) << " V" <<nio::endl;
             line++;
             break;
         }
     }
-    csl << "Press any key to continue... ";
+    csl << "Press any key to continue... " << nio::endl;
     wait_key_pressed();
 }
 void spice_t::show_currents(){
@@ -1437,27 +1358,27 @@ void spice_t::show_currents(){
     while(pos){
         pos--;
         if(line >= 29){
-            csl << "Press any key to continue... ";
+            csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
         }
         switch(netlist->row[pos].type){
         case(current_source):
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
             break;
         case(fet_n):
-            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Ids: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
             break;
         case(fet_p):
-            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Ids: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
             break;
         default:
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
             break;
         }
         line++;
     }
-    csl << "Press any key to continue... ";
+    csl << "Press any key to continue... " << nio::endl;
     wait_key_pressed();
 }
 void spice_t::show_statistics(){
@@ -1471,17 +1392,17 @@ int main() {
     csl << "-----" << nio::endl;
 	spice_t spice;
 	spice.simulate();
-	csl << "-----" << nio::endl;
+	csl << "Simulation log:" << nio::endl;
 	spice.show_statistics();
-	csl << "-----" << nio::endl;
+	csl << "----- Voltages (Nodes) -----" << nio::endl;
     spice.show_result();
-    csl << "-----" << nio::endl;
+    csl << "----- Voltages (Components) -----" << nio::endl;
     spice.show_voltages();
-    csl << "-----" << nio::endl;
+    csl << "----- Current (Components) -----" << nio::endl;
     spice.show_currents();
-    csl << "-----" << nio::endl;
+    csl << "----- Small Signals -----" << nio::endl;
     spice.small_signal_analysis();
-    csl << "Press any key to return to OS... ";
+    csl << "Press any key to return to OS... " << nio::endl;
     wait_key_pressed();
 	return 0;
 }
