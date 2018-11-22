@@ -86,7 +86,7 @@ const char* capacitor_code = "cap";
 const char* inductor_code = "ind";
 const char* diode_code = "d";
 const char* bjt_npn_code = "bjt npn";
-const char* bjt_pnp_code = "pnp";
+const char* bjt_pnp_code = "bjt pnp";
 const char* fet_n_code = "nmos";
 const char* fet_p_code = "pmos";
 
@@ -130,11 +130,17 @@ class component_t {
 public:
 	static void insert_all(double **G, double *X, netlist_t *netlist, uint8_t netlist_pos, uint8_t *vs_pos);
 	static void nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
-	static void voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
-	static void current_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void voltage_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+	static void current_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
 	static void diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static double voltage_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double current_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double resistor_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double diode_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
 };
 class nod_t{
 public:
@@ -258,6 +264,7 @@ struct netlist_t::row_t{
     double value[NETLIST_PARAM_MAX];
     uint8_t node[NETLIST_CONNECTION_MAX];
     void (*update)(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    double (*current)(uint8_t netlist_pos, netlist_t* netlist, double *data);
     char alias[NETLIST_ALIAS_SIZE];
 };
 
@@ -289,7 +296,8 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 G[*vs_pos - 1][netlist->row[netlist_pos].node[positive] - 1] = -1;
             }
             netlist->row[netlist_pos].node[hidden] = *vs_pos;
-            netlist->row[netlist_pos].update = voltage_f;
+            netlist->row[netlist_pos].update = voltage_source_f;
+            netlist->row[netlist_pos].current = voltage_source_cf;
             (*vs_pos)--;
             break;
         case(current_source):
@@ -305,7 +313,8 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                     G[netlist->row[netlist_pos].node[negative] - 1][netlist->row[netlist_pos].node[positive] - 1] += -GMIN;
                 }
             }
-            netlist->row[netlist_pos].update = current_f;
+            netlist->row[netlist_pos].update = current_source_f;
+            netlist->row[netlist_pos].current = current_source_cf;
             break;
         case(resistor):
             if (netlist->row[netlist_pos].node[positive]) {
@@ -321,6 +330,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = nop_f;
+            netlist->row[netlist_pos].current = resistor_cf;
             break;
         case(capacitor):
 
@@ -342,6 +352,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = diode_f;
+            netlist->row[netlist_pos].current = diode_cf;
             break;
         case (fet_n):
             if (netlist->row[netlist_pos].node[fet_source]) {
@@ -372,6 +383,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = fet_n_f;
+            netlist->row[netlist_pos].current = fet_n_cf;
             break;
         case(fet_p):
             if (netlist->row[netlist_pos].node[fet_source]) {
@@ -387,6 +399,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             netlist->row[netlist_pos].update = fet_p_f;
+            netlist->row[netlist_pos].current = fet_p_cf;
             break;
         default:
             break;
@@ -396,10 +409,10 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
 
 void component_t::nop_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
 }
-void component_t::voltage_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+void component_t::voltage_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     target[netlist->row[netlist_pos].node[hidden] - 1] = netlist->row[netlist_pos].value[voltage];
 }
-void component_t::current_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+void component_t::current_source_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
     if(netlist->row[netlist_pos].node[from]){
         target[netlist->row[netlist_pos].node[from] - 1] -= netlist->row[netlist_pos].value[current];
     }
@@ -512,6 +525,113 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         target[netlist->row[netlist_pos].node[fet_drain] - 1] += id;
     }
 }
+
+double component_t::voltage_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    return data[netlist->row[netlist_pos].node[hidden] - 1];
+}
+double component_t::current_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    return netlist->row[netlist_pos].value[current];
+}
+double component_t::resistor_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double r_vp = 0;
+    double r_vn = 0;
+    double r_r = netlist->row[netlist_pos].value[resistance];
+    if(netlist->row[netlist_pos].node[positive]){
+        r_vp = data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        r_vn = data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    return (r_vp - r_vn)/r_r;
+}
+double component_t::diode_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double d_is = netlist->row[netlist_pos].value[diode_is];
+    double d_vt = netlist->row[netlist_pos].value[diode_vt];
+    double d_vd = 0;
+    if(netlist->row[netlist_pos].node[positive]){
+        d_vd += data[netlist->row[netlist_pos].node[positive] - 1];
+    }
+    if(netlist->row[netlist_pos].node[negative]){
+        d_vd -= data[netlist->row[netlist_pos].node[negative] - 1];
+    }
+    return d_is * (exp(d_vd / d_vt) - 1);
+}
+double component_t::fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs <= vt){
+        return 0;
+    }
+    else if(vds<(vgs-vt)){
+        return (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        return (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+}
+double component_t::fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda;
+    w = netlist->row[netlist_pos].value[fet_w];
+    l = netlist->row[netlist_pos].value[fet_l];
+    kp = netlist->row[netlist_pos].value[fet_kp];
+    vt = netlist->row[netlist_pos].value[fet_vt];
+    lambda = netlist->row[netlist_pos].value[fet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs >= vt){
+        return 0;
+    }
+    else if(vds>(vgs-vt)){
+        return -(kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+    }
+    else{
+        return -(kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+    }
+}
+
+
 
 nod_t::nod_t(netlist_t *src) {
 	uint8_t pos = src->components;
@@ -954,6 +1074,7 @@ public:
     void request_components(void);
     void show_result(void);
     void show_voltages(void);
+    void show_currents(void);
     void show_statistics(void);
     static void show_init_screen(void);
 };
@@ -1158,6 +1279,26 @@ void spice_t::show_voltages(){
         }
     }
 }
+void spice_t::show_currents(){
+    uint16_t pos = netlist->components;
+    while(pos){
+        pos--;
+        switch(netlist->row[pos].type){
+        case(current_source):
+            std::cout << netlist->row[pos].alias << ": " << netlist->row[pos].current(pos, netlist, solver->S0) << "A" <<std::endl;
+            break;
+        case(fet_n):
+            std::cout << netlist->row[pos].alias << " - Id: " << netlist->row[pos].current(pos, netlist, solver->S0) << "A" <<std::endl;
+            break;
+        case(fet_p):
+            std::cout << netlist->row[pos].alias << " - Id: " << netlist->row[pos].current(pos, netlist, solver->S0) << "A" <<std::endl;
+            break;
+        default:
+            std::cout << netlist->row[pos].alias << ": " << netlist->row[pos].current(pos, netlist, solver->S0) << "A" <<std::endl;
+            break;
+        }
+    }
+}
 void spice_t::show_statistics(){
     std::cout << "LFS0: " << solver->LFS0 << std::endl;
     std::cout << "Iterations: " << iterations << std::endl;
@@ -1175,6 +1316,8 @@ int main() {
     spice.show_result();
     cout << "-----" << endl;
     spice.show_voltages();
+    cout << "-----" << endl;
+    spice.show_currents();
     getchar();
 	return 0;
 }
