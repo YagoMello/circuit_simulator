@@ -1247,7 +1247,7 @@ void spice_t::small_signal_analysis(){
     uint8_t line = 0;
     while(pos){
         pos--;
-        if(line >= 28){
+        if(line >= 27){
             csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
@@ -1305,7 +1305,7 @@ void spice_t::show_result(){
     uint8_t line = 0;
     while (pos){
         pos--;
-        if(line == 29){
+        if(line == 28){
             csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
@@ -1322,7 +1322,7 @@ void spice_t::show_voltages(){
     uint8_t line = 0;
     while(pos){
         pos--;
-        if(line >= 28){
+        if(line >= 27){
             csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
@@ -1357,7 +1357,7 @@ void spice_t::show_currents(){
     uint8_t line = 0;
     while(pos){
         pos--;
-        if(line >= 29){
+        if(line >= 28){
             csl << "Press any key to continue... " << nio::endl;
             wait_key_pressed();
             line = 0;
