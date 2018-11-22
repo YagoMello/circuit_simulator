@@ -1166,8 +1166,8 @@ spice_t::spice_t(){
     csl << "Components: ";
     components = atoi(utils_nspire_t::safe_gets(str));
     csl << "GMIN (0 = default): ";
-    gmin = atoi(utils_nspire_t::safe_gets(str));;
-    gmin = gmin ? gmin : 10e-12;
+    GMIN = atoi(utils_nspire_t::safe_gets(str));;
+    GMIN = GMIN ? GMIN : 10e-12;
     netlist = new netlist_t(nodes, components);
     request_components();
     solver = new nod_t(netlist);
@@ -1193,6 +1193,7 @@ void spice_t::show_init_screen(void){
 }
 void spice_t::simulate(){
     char initial_guess;
+    char str[32];
     uint16_t pos = netlist->nodes;
     double step;
     double close_enough;
@@ -1213,7 +1214,7 @@ void spice_t::simulate(){
     jacobian_tolerance = atof(utils_nspire_t::safe_gets(str));
     jacobian_tolerance = jacobian_tolerance ? jacobian_tolerance : NOD_DEF_JNI_TOL;
     csl << "Initial guess? (y/n): ";
-    csl >> initial_guess;
+    csl >> &initial_guess;
     while(pos && (initial_guess != 'n')){
         csl << "Node " << pos << ": ";
         pos--;
@@ -1223,15 +1224,15 @@ void spice_t::simulate(){
 }
 void spice_t::request_components(){
     char code[COMPONENT_CODE_MAX_LENGTH];
-    uint8_t confirmation;
+    char confirmation;
     uint8_t pos = netlist->components;
     char str[32];
     int gambiarra;
     while(pos){
-        csl << "----- Component " << (unsigned int)pos << " -----" << nio::endl;
+        csl << "----- Component " << (int)pos << " -----" << nio::endl;
         pos--;
         csl << "Component: ";
-        utils_nspire_t::safe_gets(code); =
+        utils_nspire_t::safe_gets(code);
         csl << "Alias: ";
         utils_nspire_t::safe_gets(netlist->row[pos].alias);
         if(!strcmp(code, resistor_code)){
@@ -1311,7 +1312,7 @@ void spice_t::request_components(){
             netlist->row[pos].value[fet_vt] = atof(utils_nspire_t::safe_gets(str));
         }
         csl << "confirm? (y/n): ";
-        csl >> confirmation;
+        csl >> &confirmation;
         if(confirmation == 'n'){
             pos++;
         }
