@@ -1177,7 +1177,7 @@ spice_t::~spice_t(){
     delete solver;
 }
 void spice_t::show_init_screen(void){
-    csl << "BSpice Alpha" << nio::endl;
+    csl << "BSpice Alpha 0.2" << nio::endl;
     csl << "GND = Node 0 = 0" << nio::endl;
     csl << "Component code:" << nio::endl;
     csl << resistor_name << ": " << resistor_code << nio::endl;
@@ -1316,12 +1316,20 @@ void spice_t::request_components(){
             pos++;
         }
     }
+    csl << "Press any key to continue... ";
+    wait_key_pressed();
 }
 void spice_t::small_signal_analysis(void){
     uint8_t pos = netlist->components;
     char str[32];
+    uint8_t line = 0;
     while(pos){
         pos--;
+        if(line >= 28){
+            csl << "Press any key to continue... ";
+            wait_key_pressed();
+            line = 0;
+        }
         switch(netlist->row[pos].type){
         case(fet_p):
             //don't insert break here
@@ -1361,44 +1369,74 @@ void spice_t::small_signal_analysis(void){
                 csl << netlist->row[pos].alias << " - triodo - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - triodo - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds), str) << nio::endl;
             }
+            line += 2;
         default:
             break;
         }
     }
+    csl << "Press any key to continue... ";
+    wait_key_pressed();
 }
 void spice_t::show_result(){
     uint8_t pos = netlist->nodes;
+    uint8_t line = 0;
     while (pos){
         pos--;
+        if(line == 29){
+            csl << "Press any key to continue... ";
+            wait_key_pressed();
+            line = 0;
+        }
         csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos], str) << "V" << nio::endl;
+        line++;
     }
+    csl << "Press any key to continue... ";
+    wait_key_pressed();
 }
 void spice_t::show_voltages(){
     uint16_t pos = netlist->components;
+    uint8_t line = 0;
     while(pos){
         pos--;
+        if(line >= 28){
+            csl << "Press any key to continue... ";
+            wait_key_pressed();
+            line = 0;
+        }
         switch(netlist->row[pos].type){
         case(current_source):
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1], str) << "V" <<nio::endl;
+            line++;
             break;
         case(fet_n):
             csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
             csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            line += 2;
             break;
         case(fet_p):
             csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
             csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            line += 2;
             break;
         default:
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], str) << "V" <<nio::endl;
+            line++;
             break;
         }
     }
+    csl << "Press any key to continue... ";
+    wait_key_pressed();
 }
 void spice_t::show_currents(){
     uint16_t pos = netlist->components;
+    uint8_t line = 0;
     while(pos){
         pos--;
+        if(line >= 29){
+            csl << "Press any key to continue... ";
+            wait_key_pressed();
+            line = 0;
+        }
         switch(netlist->row[pos].type){
         case(current_source):
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
@@ -1413,7 +1451,10 @@ void spice_t::show_currents(){
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
             break;
         }
+        line++;
     }
+    csl << "Press any key to continue... ";
+    wait_key_pressed();
 }
 void spice_t::show_statistics(){
     csl << "LFS0: " << utils_nspire_t::double_to_ascii(solver->LFS0, str) << nio::endl;
@@ -1435,6 +1476,7 @@ int main() {
     spice.show_currents();
     csl << "-----" << nio::endl;
     spice.small_signal_analysis();
+    csl << "Press any key to return to OS... ";
     wait_key_pressed();
 	return 0;
 }
