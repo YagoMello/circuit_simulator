@@ -1072,6 +1072,7 @@ public:
     nod_t *solver;
     void simulate(void);
     void request_components(void);
+    void small_signal_analysis(void);
     void show_result(void);
     void show_voltages(void);
     void show_currents(void);
@@ -1250,6 +1251,54 @@ void spice_t::request_components(){
         }
     }
 }
+void spice_t::small_signal_analysis(void){
+    uint8_t pos = netlist->components;
+    while(pos){
+        pos--;
+        switch(netlist->row[pos].type){
+        case(fet_p):
+            //don't insert break here
+        case(fet_n):
+            double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
+            w = netlist->row[pos].value[fet_w];
+            l = netlist->row[pos].value[fet_l];
+            kp = netlist->row[pos].value[fet_kp];
+            vt = netlist->row[pos].value[fet_vt];
+            lambda = netlist->row[pos].value[fet_lambda];
+            id = netlist->row[pos].current(pos, netlist, solver->S0);
+            if(netlist->row[pos].node[fet_source]){
+                vs = solver->S0[netlist->row[pos].node[fet_source] - 1];
+            }
+            else{
+                vs = 0;
+            }
+            if(netlist->row[pos].node[fet_drain]){
+                vd = solver->S0[netlist->row[pos].node[fet_drain] - 1];
+            }
+            else{
+                vd = 0;
+            }
+            if(netlist->row[pos].node[fet_gate]){
+                vg = solver->S0[netlist->row[pos].node[fet_gate] - 1];
+            }
+            else{
+                vg = 0;
+            }
+            vgs = vg-vs;
+            vds = vd-vs;
+            if(vds >= vgs-vt){
+                std::cout << netlist->row[pos].alias << " - pentodo - Rds: " << (1+lambda*vds)/(lambda*id) << std::endl;
+                std::cout << netlist->row[pos].alias << " - pentodo - Gm: " << 2*id/(vgs-vt) << std::endl;
+            }
+            else{
+                std::cout << netlist->row[pos].alias << " - triodo - Rds: " << 1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))) << std::endl;
+                std::cout << netlist->row[pos].alias << " - triodo - Gm: " << (w/l)*kp*vds*(1+lambda*vds) << std::endl;
+            }
+        default:
+            break;
+        }
+    }
+}
 void spice_t::show_result(){
     uint16_t pos = netlist->nodes;
     while (pos){
@@ -1318,6 +1367,8 @@ int main() {
     spice.show_voltages();
     cout << "-----" << endl;
     spice.show_currents();
+    cout << "-----" << endl;
+    spice.small_signal_analysis();
     getchar();
 	return 0;
 }
