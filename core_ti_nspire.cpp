@@ -1355,11 +1355,11 @@ void spice_t::small_signal_analysis(void){
             vds = vd-vs;
             if(vds >= vgs-vt){
                 csl << netlist->row[pos].alias << " - pentodo - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
-                csl << netlist->row[pos].alias << " - pentodo - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt)) << nio::endl;
+                csl << netlist->row[pos].alias << " - pentodo - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
             }
             else{
-                csl << netlist->row[pos].alias << " - triodo - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds)))) << nio::endl;
-                csl << netlist->row[pos].alias << " - triodo - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds)) << nio::endl;
+                csl << netlist->row[pos].alias << " - triodo - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - triodo - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds), str) << nio::endl;
             }
         default:
             break;
@@ -1370,7 +1370,7 @@ void spice_t::show_result(){
     uint8_t pos = netlist->nodes;
     while (pos){
         pos--;
-        csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos]) << "V" << nio::endl;
+        csl << "Node " << (int)(pos+1) << ": " << utils_nspire_t::double_to_ascii(solver->S0[pos], str) << "V" << nio::endl;
     }
 }
 void spice_t::show_voltages(){
@@ -1379,18 +1379,18 @@ void spice_t::show_voltages(){
         pos--;
         switch(netlist->row[pos].type){
         case(current_source):
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[to] - 1] - solver->S0[netlist->row[pos].node[from] - 1], str) << "V" <<nio::endl;
             break;
         case(fet_n):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
             break;
         case(fet_p):
-            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
-            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << "V" <<nio::endl;
             break;
         default:
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1]) << "V" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], str) << "V" <<nio::endl;
             break;
         }
     }
@@ -1401,22 +1401,22 @@ void spice_t::show_currents(){
         pos--;
         switch(netlist->row[pos].type){
         case(current_source):
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
             break;
         case(fet_n):
-            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
             break;
         case(fet_p):
-            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Id: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
             break;
         default:
-            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0)) << "A" <<nio::endl;
+            csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << "A" <<nio::endl;
             break;
         }
     }
 }
 void spice_t::show_statistics(){
-    csl << "LFS0: " << utils_nspire_t::double_to_ascii(solver->LFS0) << nio::endl;
+    csl << "LFS0: " << utils_nspire_t::double_to_ascii(solver->LFS0, str) << nio::endl;
     csl << "Iterations: " << (int)iterations << nio::endl;
 }
 
