@@ -659,11 +659,11 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     }
     else if(vds<(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
-        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
+        netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
         id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
-        netlist->row[netlist_pos].status[fet_region] = fet_linear;
+        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
@@ -705,11 +705,11 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     }
     else if(vds>(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
-        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
+        netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
         id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1-lambda*vds);
-        netlist->row[netlist_pos].status[fet_region] = fet_linear;
+        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] -= id;
@@ -749,11 +749,11 @@ void component_t::jfet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data
     }
     else if(vds<=(vgs-vto)){
         id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
-        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
+        netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
         id = (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1+lambda*vds);
-        netlist->row[netlist_pos].status[fet_region] = fet_linear;
+        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
@@ -793,11 +793,11 @@ void component_t::jfet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data
     }
     else if(vds>=(vgs-vto)){
         id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
-        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
+        netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
         id = (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1-lambda*vds);
-        netlist->row[netlist_pos].status[fet_region] = fet_linear;
+        netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] -= id;
@@ -1816,11 +1816,11 @@ void spice_t::show_status(){
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
                 csl << "Cutoff";
             }
-            else if(netlist->row[pos].status[fet_region] == fet_saturation){
-                csl << "Saturation / Triode";
-            }
             else if(netlist->row[pos].status[fet_region] == fet_linear){
-                csl << "Linear / Pentode";
+                csl << "Linear / Triode";
+            }
+            else if(netlist->row[pos].status[fet_region] == fet_saturation){
+                csl << "Saturation / Pentode";
             }
             csl << nio::endl;
             break;
@@ -1829,11 +1829,11 @@ void spice_t::show_status(){
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
                 csl << "Cutoff";
             }
-            else if(netlist->row[pos].status[fet_region] == fet_saturation){
-                csl << "Saturation / Triode";
-            }
             else if(netlist->row[pos].status[fet_region] == fet_linear){
-                csl << "Linear / Pentode";
+                csl << "Linear / Triode";
+            }
+            else if(netlist->row[pos].status[fet_region] == fet_saturation){
+                csl << "Saturation / Pentode";
             }
             csl << nio::endl;
             break;
@@ -1842,11 +1842,11 @@ void spice_t::show_status(){
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
                 csl << "Cutoff";
             }
-            else if(netlist->row[pos].status[fet_region] == fet_saturation){
-                csl << "Saturation / Triode";
-            }
             else if(netlist->row[pos].status[fet_region] == fet_linear){
-                csl << "Linear / Pentode";
+                csl << "Linear / Triode";
+            }
+            else if(netlist->row[pos].status[fet_region] == fet_saturation){
+                csl << "Saturation / Pentode";
             }
             csl << nio::endl;
             break;
@@ -1855,11 +1855,11 @@ void spice_t::show_status(){
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
                 csl << "Cutoff";
             }
-            else if(netlist->row[pos].status[fet_region] == fet_saturation){
-                csl << "Saturation / Triode";
-            }
             else if(netlist->row[pos].status[fet_region] == fet_linear){
-                csl << "Linear / Pentode";
+                csl << "Linear / Triode";
+            }
+            else if(netlist->row[pos].status[fet_region] == fet_saturation){
+                csl << "Saturation / Pentode";
             }
             csl << nio::endl;
             break;
