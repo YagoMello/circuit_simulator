@@ -747,7 +747,7 @@ void component_t::jfet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data
         id = 0;
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
-    else if(vds<=(vgs-vt)){
+    else if(vds<=(vgs-vto)){
         id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
         netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
@@ -791,7 +791,7 @@ void component_t::jfet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data
         id = 0;
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
-    else if(vds>=(vgs-vt)){
+    else if(vds>=(vgs-vto)){
         id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
         netlist->row[netlist_pos].status[fet_region] = fet_saturation;
     }
@@ -939,7 +939,7 @@ double component_t::jfet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *d
     if(vgs <= vto){
         return 0;
     }
-    else if(vds<=(vgs-vt)){
+    else if(vds<=(vgs-vto)){
         return (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
     }
     else{
@@ -974,7 +974,7 @@ double component_t::jfet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *d
     if(vgs >= vto){
         return 0;
     }
-    else if(vds>=(vgs-vt)){
+    else if(vds>=(vgs-vto)){
         return -(idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
     }
     else{
@@ -1547,8 +1547,7 @@ void spice_t::small_signal_analysis(){
             wait_key_pressed();
             line = 0;
         }
-        switch(netlist->row[pos].type){
-        case(fet_n):
+        if(netlist->row[pos].type == fet_n){
             double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
             w = netlist->row[pos].value[fet_w];
             l = netlist->row[pos].value[fet_l];
@@ -1585,8 +1584,8 @@ void spice_t::small_signal_analysis(){
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds), str) << nio::endl;
             }
             line += 2;
-            break;
-        case(fet_p):
+        }
+        else if(netlist->row[pos].type == fet_p){
             double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
             w = netlist->row[pos].value[fet_w];
             l = netlist->row[pos].value[fet_l];
@@ -1623,8 +1622,8 @@ void spice_t::small_signal_analysis(){
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1-lambda*vds), str) << nio::endl;
             }
             line += 2;
-            break;
-        case(jfet_n):
+        }
+        else if(netlist->row[pos].type == jfet_n){
             double vs, vd, vg, vds, vgs, idss, vto, lambda, id, beta;
             idss = netlist->row[pos].value[jfet_idss];
             vto = netlist->row[pos].value[jfet_vto];
@@ -1660,8 +1659,8 @@ void spice_t::small_signal_analysis(){
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(beta*vds*(1+lambda*vds), str) << nio::endl;
             }
             line += 2;
-            break;
-        case(jfet_p):
+        }
+        else if(netlist->row[pos].type == jfet_p){
             double vs, vd, vg, vds, vgs, idss, vto, lambda, id, beta;
             idss = netlist->row[pos].value[jfet_idss];
             vto = netlist->row[pos].value[jfet_vto];
@@ -1697,9 +1696,6 @@ void spice_t::small_signal_analysis(){
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(beta*vds*(1-lambda*vds), str) << nio::endl;
             }
             line += 2;
-            break;
-        default:
-            break;
         }
     }
     csl << "Press any key to continue... " << nio::endl;
