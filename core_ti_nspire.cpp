@@ -1650,7 +1650,7 @@ void spice_t::small_signal_analysis(){
             }
             vgs = vg-vs;
             vds = vd-vs;
-            if(vds >= vgs-vt){
+            if(vds >= vgs-vto){
                 csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
             }
@@ -1687,7 +1687,7 @@ void spice_t::small_signal_analysis(){
             }
             vgs = vg-vs;
             vds = vd-vs;
-            if(vds <= vgs-vt){
+            if(vds <= vgs-vto){
                 csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(lambda*id), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vto), str) << nio::endl;
             }
@@ -1836,6 +1836,7 @@ void spice_t::show_status(){
                 csl << "Linear / Pentode";
             }
             csl << nio::endl;
+            break;
         case(jfet_n):
             csl << netlist->row[pos].alias << " - region: ";
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
@@ -1848,6 +1849,7 @@ void spice_t::show_status(){
                 csl << "Linear / Pentode";
             }
             csl << nio::endl;
+            break;
         case(jfet_p):
             csl << netlist->row[pos].alias << " - region: ";
             if(netlist->row[pos].status[fet_region] == fet_cutoff){
@@ -1860,6 +1862,7 @@ void spice_t::show_status(){
                 csl << "Linear / Pentode";
             }
             csl << nio::endl;
+            break;
         default:
             break;
         }
