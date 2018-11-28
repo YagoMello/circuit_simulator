@@ -658,7 +658,7 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
     else if(vds<(vgs-vt)){
-        id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        id = (kp/2)*(w/l)*(2*(vgs-vt)-vds)*vds*(1+lambda*vds);
         netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
@@ -704,7 +704,7 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
     else if(vds>(vgs-vt)){
-        id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        id = (kp/2)*(w/l)*(2*(vgs-vt)-vds)*vds*(1-lambda*vds);
         netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
@@ -748,7 +748,7 @@ void component_t::jfet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
     else if(vds<=(vgs-vto)){
-        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds*(1+lambda*vds);
         netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
@@ -792,7 +792,7 @@ void component_t::jfet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data
         netlist->row[netlist_pos].status[fet_region] = fet_cutoff;
     }
     else if(vds>=(vgs-vto)){
-        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds*(1-lambda*vds);
         netlist->row[netlist_pos].status[fet_region] = fet_linear;
     }
     else{
@@ -1614,7 +1614,7 @@ void spice_t::small_signal_analysis(){
             vgs = vg-vs;
             vds = vd-vs;
             if(vds <= vgs-vt){
-                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(-lambda*id), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
             }
             else{
@@ -1688,7 +1688,7 @@ void spice_t::small_signal_analysis(){
             vgs = vg-vs;
             vds = vd-vs;
             if(vds <= vgs-vto){
-                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(-lambda*id), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vto), str) << nio::endl;
             }
             else{
