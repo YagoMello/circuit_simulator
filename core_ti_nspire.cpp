@@ -19,8 +19,9 @@ nio::console csl;
 constexpr uint8_t NETLIST_CONNECTION_MAX = 4;
 constexpr uint8_t NETLIST_PARAM_MAX = 5;
 constexpr uint8_t NETLIST_ALIAS_SIZE = 16;
+constexpr uint8_t NETLIST_STATUS_MAX = 1;
 constexpr uint8_t COMPONENT_CODE_MAX_LENGTH = 16;
-constexpr double NOD_DEF_ERROR_VECTOR_MAX_LENGTH = 1e-10;
+constexpr double NOD_DEF_ERROR_VECTOR_MAX_LENGTH = 1e-6;
 constexpr double NOD_DEF_JACOBIAN_STEP = 1e-10;
 constexpr double NOD_DEF_JNI_TOL = 1e-10;
 constexpr double NOD_R_TOL = 1e-14;
@@ -55,6 +56,10 @@ constexpr uint8_t fet_l = 1;
 constexpr uint8_t fet_kp = 2;
 constexpr uint8_t fet_vt = 3;
 constexpr uint8_t fet_lambda = 4;
+//jfet
+constexpr uint8_t jfet_idss = 0;
+constexpr uint8_t jfet_vto = 1;
+constexpr uint8_t jfet_lambda = 2;
 
 //TYPE_REF
 constexpr uint16_t resistor = 0;
@@ -67,6 +72,8 @@ constexpr uint16_t bjt_npn = 6;
 constexpr uint16_t bjt_pnp = 7;
 constexpr uint16_t fet_n = 8;
 constexpr uint16_t fet_p = 9;
+constexpr uint16_t jfet_n = 10;
+constexpr uint16_t jfet_p = 11;
 
 //NAME_REF
 const char* resistor_name = "Resistor";
@@ -79,6 +86,8 @@ const char* bjt_npn_name = "BJT NPN";
 const char* bjt_pnp_name = "BJT PNP";
 const char* fet_n_name = "N channel MOSFET";
 const char* fet_p_name = "P channel MOSFET";
+const char* jfet_n_name = "N channel JFET";
+const char* jfet_p_name = "P channel JFET";
 
 
 //CODE_REF
@@ -92,7 +101,13 @@ const char* bjt_npn_code = "bjt npn";
 const char* bjt_pnp_code = "bjt pnp";
 const char* fet_n_code = "nmos";
 const char* fet_p_code = "pmos";
+const char* jfet_n_code = "jfet n";
+const char* jfet_p_code = "jfet p";
 
+//STATUS_REF
+constexpr uint8_t fet_cutoff = 0;
+constexpr uint8_t fet_linear = 1;
+constexpr uint8_t fet_saturation = 2;
 
 class utils_nspire_t{
 public:
@@ -221,12 +236,17 @@ public:
 	static void diode_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     static void fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static void jfet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+    static void jfet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
+
     static double voltage_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
     static double current_source_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
     static double resistor_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
     static double diode_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
     static double fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
     static double fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double jfet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
+    static double jfet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data);
 };
 class nod_t{
 public:
@@ -348,6 +368,7 @@ template <typename T> double utils_t::norm(T* vect, uint16_t len){
 struct netlist_t::row_t{
     uint8_t type;
     double value[NETLIST_PARAM_MAX];
+    uint8_t status[NETLIST_STATUS_MAX];
     uint8_t node[NETLIST_CONNECTION_MAX];
     void (*update)(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target);
     double (*current)(uint8_t netlist_pos, netlist_t* netlist, double *data);
@@ -444,28 +465,28 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             if (netlist->row[netlist_pos].node[fet_source]) {
                 G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
-                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
                 if (netlist->row[netlist_pos].node[fet_gate]) {
-                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
                 G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
-                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
                 if (netlist->row[netlist_pos].node[fet_gate]) {
-                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
                 }
             }
             if (netlist->row[netlist_pos].node[fet_gate]) {
                 G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
-                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
                 if (netlist->row[netlist_pos].node[fet_drain]) {
-                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
             }
             netlist->row[netlist_pos].update = fet_n_f;
@@ -475,17 +496,94 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             if (netlist->row[netlist_pos].node[fet_source]) {
                 G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
-                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
                 G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
-                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += -GMIN;
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
             }
             netlist->row[netlist_pos].update = fet_p_f;
             netlist->row[netlist_pos].current = fet_p_cf;
+            break;
+            case (jfet_n):
+            if (netlist->row[netlist_pos].node[fet_source]) {
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_drain]) {
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = jfet_n_f;
+            netlist->row[netlist_pos].current = jfet_n_cf;
+            break;
+        case(jfet_p):
+            if (netlist->row[netlist_pos].node[fet_source]) {
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_drain]) {
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_gate]) {
+                    G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] -= GMIN;
+                }
+            }
+            if (netlist->row[netlist_pos].node[fet_gate]) {
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                if (netlist->row[netlist_pos].node[fet_source]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
+                }
+                if (netlist->row[netlist_pos].node[fet_drain]) {
+                    G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
+                }
+            }
+            netlist->row[netlist_pos].update = jfet_p_f;
+            netlist->row[netlist_pos].current = jfet_p_cf;
             break;
         default:
             break;
@@ -554,12 +652,15 @@ void component_t::fet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     vds = vd-vs;
     if(vgs <= vt){
         id = 0;
+        netlist->row[netlist_pos].status = fet_cutoff;
     }
     else if(vds<(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        netlist->row[netlist_pos].status = fet_saturation;
     }
     else{
         id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+        netlist->row[netlist_pos].status = fet_linear;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
@@ -597,12 +698,103 @@ void component_t::fet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data,
     vds = vd-vs;
     if(vgs >= vt){
         id = 0;
+        netlist->row[netlist_pos].status = fet_cutoff;
     }
     else if(vds>(vgs-vt)){
         id = (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        netlist->row[netlist_pos].status = fet_saturation;
     }
     else{
-        id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+        id = (kp/2)*(w/l)*pow(vgs-vt, 2)*(1-lambda*vds);
+        netlist->row[netlist_pos].status = fet_linear;
+    }
+    if(netlist->row[netlist_pos].node[fet_source]){
+        target[netlist->row[netlist_pos].node[fet_source] - 1] -= id;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        target[netlist->row[netlist_pos].node[fet_drain] - 1] += id;
+    }
+}
+void component_t::jfet_n_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double vs, vd, vg, vds, vgs, id, idss, vto, lambda;
+    idss = netlist->row[netlist_pos].value[jfet_idss];
+    vto = netlist->row[netlist_pos].value[jfet_vto];
+    lambda = netlist->row[netlist_pos].value[jfet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs <= vt){
+        id = 0;
+        netlist->row[netlist_pos].status = fet_cutoff;
+    }
+    else if(vds<=(vgs-vt)){
+        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        netlist->row[netlist_pos].status = fet_saturation;
+    }
+    else{
+        id = (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1+lambda*vds);
+        netlist->row[netlist_pos].status = fet_linear;
+    }
+    if(netlist->row[netlist_pos].node[fet_source]){
+        target[netlist->row[netlist_pos].node[fet_source] - 1] += id;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        target[netlist->row[netlist_pos].node[fet_drain] - 1] -= id;
+    }
+}
+void component_t::jfet_p_f(uint8_t netlist_pos, netlist_t* netlist, double *data, double *target){
+    double vs, vd, vg, vds, vgs, id, idss, vto, lambda;
+    idss = netlist->row[netlist_pos].value[jfet_idss];
+    vto = netlist->row[netlist_pos].value[jfet_vto];
+    lambda = netlist->row[netlist_pos].value[jfet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs >= vt){
+        id = 0;
+        netlist->row[netlist_pos].status = fet_cutoff;
+    }
+    else if(vds>=(vgs-vt)){
+        id = (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        netlist->row[netlist_pos].status = fet_saturation;
+    }
+    else{
+        id = (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1-lambda*vds);
+        netlist->row[netlist_pos].status = fet_linear;
     }
     if(netlist->row[netlist_pos].node[fet_source]){
         target[netlist->row[netlist_pos].node[fet_source] - 1] -= id;
@@ -713,10 +905,79 @@ double component_t::fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *da
         return -(kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
     }
     else{
-        return -(kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
+        return -(kp/2)*(w/l)*pow(vgs-vt, 2)*(1-lambda*vds);
     }
 }
-
+double component_t::jfet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, idss, vto, lambda;
+    idss = netlist->row[netlist_pos].value[jfet_idss];
+    vto = netlist->row[netlist_pos].value[jfet_vto];
+    lambda = netlist->row[netlist_pos].value[jfet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs <= vt){
+        return 0;
+    }
+    else if(vds<=(vgs-vt)){
+        return (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+    }
+    else{
+        return (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1+lambda*vds);
+    }
+}
+double component_t::jfet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *data){
+    double vs, vd, vg, vds, vgs, idss, vto, lambda;
+    idss = netlist->row[netlist_pos].value[jfet_idss];
+    vto = netlist->row[netlist_pos].value[jfet_vto];
+    lambda = netlist->row[netlist_pos].value[jfet_lambda];
+    if(netlist->row[netlist_pos].node[fet_source]){
+        vs = data[netlist->row[netlist_pos].node[fet_source] - 1];
+    }
+    else{
+        vs = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_drain]){
+        vd = data[netlist->row[netlist_pos].node[fet_drain] - 1];
+    }
+    else{
+        vd = 0;
+    }
+    if(netlist->row[netlist_pos].node[fet_gate]){
+        vg = data[netlist->row[netlist_pos].node[fet_gate] - 1];
+    }
+    else{
+        vg = 0;
+    }
+    vgs = vg-vs;
+    vds = vd-vs;
+    if(vgs >= vt){
+        return 0;
+    }
+    else if(vds>=(vgs-vt)){
+        return -(idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+    }
+    else{
+        return -(idss/pow(vto, 2))*pow(vgs-vto, 2)*(1-lambda*vds);
+    }
+}
 
 
 nod_t::nod_t(netlist_t *src) {
@@ -1075,6 +1336,7 @@ public:
     void show_result(void);
     void show_voltages(void);
     void show_currents(void);
+    void show_status(void);
     void show_statistics(void);
     static void show_init_screen(void);
 };
@@ -1111,6 +1373,8 @@ void spice_t::show_init_screen(void){
     csl << bjt_pnp_name << ": " << bjt_pnp_code << nio::endl;
     csl << fet_n_name << ": " << fet_n_code << nio::endl;
     csl << fet_p_name << ": " << fet_p_code << nio::endl;
+    csl << jfet_n_name << ": " << jfet_n_code << nio::endl;
+    csl << jfet_p_name << ": " << jfet_p_code << nio::endl;
 }
 void spice_t::simulate(){
     char initial_guess;
@@ -1210,7 +1474,7 @@ void spice_t::request_components(){
             netlist->row[pos].value[fet_kp] = atof(utils_nspire_t::safe_gets(str));
             csl << "Lambda: ";
             netlist->row[pos].value[fet_lambda] = atof(utils_nspire_t::safe_gets(str));
-            csl << "Vth: ";
+            csl << "Vto: ";
             netlist->row[pos].value[fet_vt] = atof(utils_nspire_t::safe_gets(str));
         }
         else if(!strcmp(code, fet_p_code)){
@@ -1229,8 +1493,38 @@ void spice_t::request_components(){
             netlist->row[pos].value[fet_kp] = atof(utils_nspire_t::safe_gets(str));
             csl << "Lambda: ";
             netlist->row[pos].value[fet_lambda] = atof(utils_nspire_t::safe_gets(str));
-            csl << "Vth: ";
+            csl << "Vto: ";
             netlist->row[pos].value[fet_vt] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, jfet_n_code)){
+            netlist->row[pos].type = jfet_n;
+            csl << "Drain node: ";
+            netlist->row[pos].node[fet_drain] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Source node: ";
+            netlist->row[pos].node[fet_source] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Gate node: ";
+            netlist->row[pos].node[fet_gate] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Idss: ";
+            netlist->row[pos].value[jfet_idss] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Lambda: ";
+            netlist->row[pos].value[jfet_lambda] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Vto: ";
+            netlist->row[pos].value[jfet_vto] = atof(utils_nspire_t::safe_gets(str));
+        }
+        else if(!strcmp(code, jfet_p_code)){
+            netlist->row[pos].type = jfet_p;
+            csl << "Drain node: ";
+            netlist->row[pos].node[fet_drain] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Source node: ";
+            netlist->row[pos].node[fet_source] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Gate node: ";
+            netlist->row[pos].node[fet_gate] = atoi(utils_nspire_t::safe_gets(str));
+            csl << "Idss: ";
+            netlist->row[pos].value[jfet_idss] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Lambda: ";
+            netlist->row[pos].value[jfet_lambda] = atof(utils_nspire_t::safe_gets(str));
+            csl << "Vto: ";
+            netlist->row[pos].value[jfet_vto] = atof(utils_nspire_t::safe_gets(str));
         }
         csl << "confirm? (y/n): ";
         csl >> &confirmation;
@@ -1238,8 +1532,6 @@ void spice_t::request_components(){
             pos++;
         }
     }
-    csl << "Press any key to continue... " << nio::endl;
-    wait_key_pressed();
 }
 void spice_t::small_signal_analysis(){
     uint8_t pos = netlist->components;
@@ -1253,8 +1545,6 @@ void spice_t::small_signal_analysis(){
             line = 0;
         }
         switch(netlist->row[pos].type){
-        case(fet_p):
-            //don't insert break here
         case(fet_n):
             double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
             w = netlist->row[pos].value[fet_w];
@@ -1284,14 +1574,127 @@ void spice_t::small_signal_analysis(){
             vgs = vg-vs;
             vds = vd-vs;
             if(vds >= vgs-vt){
-                csl << netlist->row[pos].alias << " - pentodo - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
-                csl << netlist->row[pos].alias << " - pentodo - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
             }
             else{
-                csl << netlist->row[pos].alias << " - triodo - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
-                csl << netlist->row[pos].alias << " - triodo - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1+lambda*vds), str) << nio::endl;
             }
             line += 2;
+            break;
+        case(fet_p):
+            double vs, vd, vg, vds, vgs, w, l, kp, vt, lambda, id;
+            w = netlist->row[pos].value[fet_w];
+            l = netlist->row[pos].value[fet_l];
+            kp = netlist->row[pos].value[fet_kp];
+            vt = netlist->row[pos].value[fet_vt];
+            lambda = netlist->row[pos].value[fet_lambda];
+            id = netlist->row[pos].current(pos, netlist, solver->S0);
+            if(netlist->row[pos].node[fet_source]){
+                vs = solver->S0[netlist->row[pos].node[fet_source] - 1];
+            }
+            else{
+                vs = 0;
+            }
+            if(netlist->row[pos].node[fet_drain]){
+                vd = solver->S0[netlist->row[pos].node[fet_drain] - 1];
+            }
+            else{
+                vd = 0;
+            }
+            if(netlist->row[pos].node[fet_gate]){
+                vg = solver->S0[netlist->row[pos].node[fet_gate] - 1];
+            }
+            else{
+                vg = 0;
+            }
+            vgs = vg-vs;
+            vds = vd-vs;
+            if(vds <= vgs-vt){
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
+            }
+            else{
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/((w/l)*kp*((1-2*lambda*vds)*(vgs-vt) - vds*(1-1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii((w/l)*kp*vds*(1-lambda*vds), str) << nio::endl;
+            }
+            line += 2;
+            break;
+            case(jfet_n):
+            double vs, vd, vg, vds, vgs, idss, vto, lambda, id, beta;
+            idss = netlist->row[pos].value[jfet_idss];
+            vto = netlist->row[pos].value[jfet_vto];
+            lambda = netlist->row[pos].value[jfet_lambda];
+            id = netlist->row[pos].current(pos, netlist, solver->S0);
+            beta = idss / pow(vto, 2);
+            if(netlist->row[pos].node[fet_source]){
+                vs = solver->S0[netlist->row[pos].node[fet_source] - 1];
+            }
+            else{
+                vs = 0;
+            }
+            if(netlist->row[pos].node[fet_drain]){
+                vd = solver->S0[netlist->row[pos].node[fet_drain] - 1];
+            }
+            else{
+                vd = 0;
+            }
+            if(netlist->row[pos].node[fet_gate]){
+                vg = solver->S0[netlist->row[pos].node[fet_gate] - 1];
+            }
+            else{
+                vg = 0;
+            }
+            vgs = vg-vs;
+            vds = vd-vs;
+            if(vds >= vgs-vt){
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
+            }
+            else{
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/(beta*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii((beta*vds*(1+lambda*vds), str) << nio::endl;
+            }
+            line += 2;
+            break;
+        case(jfet_p):
+            double vs, vd, vg, vds, vgs, idss, vto, lambda, id, beta;
+            idss = netlist->row[pos].value[jfet_idss];
+            vto = netlist->row[pos].value[jfet_vto];
+            lambda = netlist->row[pos].value[jfet_lambda];
+            id = netlist->row[pos].current(pos, netlist, solver->S0);
+            beta = idss / pow(vto, 2);
+            if(netlist->row[pos].node[fet_source]){
+                vs = solver->S0[netlist->row[pos].node[fet_source] - 1];
+            }
+            else{
+                vs = 0;
+            }
+            if(netlist->row[pos].node[fet_drain]){
+                vd = solver->S0[netlist->row[pos].node[fet_drain] - 1];
+            }
+            else{
+                vd = 0;
+            }
+            if(netlist->row[pos].node[fet_gate]){
+                vg = solver->S0[netlist->row[pos].node[fet_gate] - 1];
+            }
+            else{
+                vg = 0;
+            }
+            vgs = vg-vs;
+            vds = vd-vs;
+            if(vds <= vgs-vt){
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1-lambda*vds)/(lambda*id), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vto), str) << nio::endl;
+            }
+            else{
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/(beta*((1-2*lambda*vds)*(vgs-vto) - vds*(1-1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(beta*vds*(1-lambda*vds), str) << nio::endl;
+            }
+            line += 2;
+            break;
         default:
             break;
         }
@@ -1342,6 +1745,16 @@ void spice_t::show_voltages(){
             csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
             line += 2;
             break;
+        case(jfet_n):
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            line += 2;
+            break;
+        case(jfet_p):
+            csl << netlist->row[pos].alias << " - Vds: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_drain] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            csl << netlist->row[pos].alias << " - Vgs: " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[fet_gate] - 1] - solver->S0[netlist->row[pos].node[fet_source] - 1], str) << " V" <<nio::endl;
+            line += 2;
+            break;
         default:
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(solver->S0[netlist->row[pos].node[positive] - 1] - solver->S0[netlist->row[pos].node[negative] - 1], str) << " V" <<nio::endl;
             line++;
@@ -1372,8 +1785,86 @@ void spice_t::show_currents(){
         case(fet_p):
             csl << netlist->row[pos].alias << " - Ids: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
             break;
+        case(jfet_n):
+            csl << netlist->row[pos].alias << " - Ids: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
+            break;
+        case(jfet_p):
+            csl << netlist->row[pos].alias << " - Ids: " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
+            break;
         default:
             csl << netlist->row[pos].alias << ": " << utils_nspire_t::double_to_ascii(netlist->row[pos].current(pos, netlist, solver->S0), str) << " A" <<nio::endl;
+            break;
+        }
+        line++;
+    }
+    csl << "Press any key to continue... " << nio::endl;
+    wait_key_pressed();
+}
+void spice_t::show_status(){
+    uint16_t pos = netlist->components;
+    char str[32];
+    uint8_t line = 0;
+    while(pos){
+        pos--;
+        if(line >= 28){
+            csl << "Press any key to continue... " << nio::endl;
+            wait_key_pressed();
+            line = 0;
+        }
+        switch(netlist->row[pos].type){
+        case(fet_n):
+            csl << netlist->row[pos].alias << " - region: ";
+            if(netlist->row[pos].status == fet_cutoff){
+                csl << "Cutoff";
+            }
+            else if(netlist->row[pos].status == fet_saturation){
+                csl << "Saturation / Triode";
+            }
+            else if(netlist->row[pos].status == fet_linear){
+                csl << "Linear / Pentode";
+            }
+            csl << nio::endl;
+            break;
+        case(fet_p):
+            csl << netlist->row[pos].alias << " - region: ";
+            if(netlist->row[pos].status == fet_cutoff){
+                csl << "Cutoff";
+            }
+            else if(netlist->row[pos].status == fet_saturation){
+                csl << "Saturation / Triode";
+            }
+            else if(netlist->row[pos].status == fet_linear){
+                csl << "Linear / Pentode";
+            }
+            csl << nio::endl;
+            break;
+        case(jfet_n):
+            csl << netlist->row[pos].alias << " - region: ";
+            if(netlist->row[pos].status == fet_cutoff){
+                csl << "Cutoff";
+            }
+            else if(netlist->row[pos].status == fet_saturation){
+                csl << "Saturation / Triode";
+            }
+            else if(netlist->row[pos].status == fet_linear){
+                csl << "Linear / Pentode";
+            }
+            csl << nio::endl;
+            break;
+        case(jfet_p):
+            csl << netlist->row[pos].alias << " - region: ";
+            if(netlist->row[pos].status == fet_cutoff){
+                csl << "Cutoff";
+            }
+            else if(netlist->row[pos].status == fet_saturation){
+                csl << "Saturation / Triode";
+            }
+            else if(netlist->row[pos].status == fet_linear){
+                csl << "Linear / Pentode";
+            }
+            csl << nio::endl;
+            break;
+        default:
             break;
         }
         line++;
@@ -1400,10 +1891,11 @@ int main() {
     spice.show_voltages();
     csl << "----- Current (Components) -----" << nio::endl;
     spice.show_currents();
+    csl << "----- Status (Components) -----" << nio::endl;
+    spice.show_status();
     csl << "----- Small Signals -----" << nio::endl;
     spice.small_signal_analysis();
     csl << "Press any key to return to OS... " << nio::endl;
     wait_key_pressed();
 	return 0;
 }
-
