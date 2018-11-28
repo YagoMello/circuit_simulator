@@ -1652,10 +1652,10 @@ void spice_t::small_signal_analysis(){
             vds = vd-vs;
             if(vds >= vgs-vto){
                 csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii((1+lambda*vds)/(lambda*id), str) << nio::endl;
-                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vt), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(2*id/(vgs-vto), str) << nio::endl;
             }
             else{
-                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/(beta*((1+2*lambda*vds)*(vgs-vt) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
+                csl << netlist->row[pos].alias << " - Rds: " << utils_nspire_t::double_to_ascii(1/(beta*((1+2*lambda*vds)*(vgs-vto) - vds*(1+1.5*lambda*vds))), str) << nio::endl;
                 csl << netlist->row[pos].alias << " - Gm: " << utils_nspire_t::double_to_ascii(beta*vds*(1+lambda*vds), str) << nio::endl;
             }
             line += 2;
