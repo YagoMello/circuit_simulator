@@ -97,12 +97,12 @@ const char* current_source_code = "cs";
 const char* capacitor_code = "cap";
 const char* inductor_code = "ind";
 const char* diode_code = "d";
-const char* bjt_npn_code = "bjt npn";
-const char* bjt_pnp_code = "bjt pnp";
+const char* bjt_npn_code = "npn";
+const char* bjt_pnp_code = "pnp";
 const char* fet_n_code = "nmos";
 const char* fet_p_code = "pmos";
-const char* jfet_n_code = "jfet n";
-const char* jfet_p_code = "jfet p";
+const char* jfet_n_code = "njt";
+const char* jfet_p_code = "pjt";
 
 //STATUS_POS_REF
 constexpr uint8_t fet_region = 0;
@@ -868,7 +868,7 @@ double component_t::fet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *da
         return 0;
     }
     else if(vds<(vgs-vt)){
-        return (kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        return (kp/2)*(w/l)*(2*(vgs-vt)-vds)*vds*(1+lambda*vds);
     }
     else{
         return (kp/2)*(w/l)*pow(vgs-vt, 2)*(1+lambda*vds);
@@ -905,7 +905,7 @@ double component_t::fet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *da
         return 0;
     }
     else if(vds>(vgs-vt)){
-        return -(kp/2)*(w/l)*(2*(vgs-vt)*(vds)-pow(vds, 2));
+        return -(kp/2)*(w/l)*(2*(vgs-vt)-vds)*vds*(1-lambda*vds);
     }
     else{
         return -(kp/2)*(w/l)*pow(vgs-vt, 2)*(1-lambda*vds);
@@ -940,7 +940,7 @@ double component_t::jfet_n_cf(uint8_t netlist_pos, netlist_t* netlist, double *d
         return 0;
     }
     else if(vds<=(vgs-vto)){
-        return (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        return (idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds*(1+lambda*vds);
     }
     else{
         return (idss/pow(vto, 2))*pow(vgs-vto, 2)*(1+lambda*vds);
@@ -975,7 +975,7 @@ double component_t::jfet_p_cf(uint8_t netlist_pos, netlist_t* netlist, double *d
         return 0;
     }
     else if(vds>=(vgs-vto)){
-        return -(idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds;
+        return -(idss/pow(vto, 2))*(2*(vgs-vto)-vds)*vds*(1-lambda*vds);
     }
     else{
         return -(idss/pow(vto, 2))*pow(vgs-vto, 2)*(1-lambda*vds);
