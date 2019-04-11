@@ -466,7 +466,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             break;
         case (fet_n):
             if (netlist->row[netlist_pos].node[fet_source]) {
-                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
@@ -475,7 +475,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
-                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -484,7 +484,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -497,7 +497,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             break;
         case(fet_p):
             if (netlist->row[netlist_pos].node[fet_source]) {
-                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
@@ -506,7 +506,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
-                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -515,7 +515,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -528,7 +528,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             break;
             case (jfet_n):
             if (netlist->row[netlist_pos].node[fet_source]) {
-                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
@@ -537,7 +537,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
-                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -546,7 +546,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -559,7 +559,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
             break;
         case(jfet_p):
             if (netlist->row[netlist_pos].node[fet_source]) {
-                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_source] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_drain]) {
                     G[netlist->row[netlist_pos].node[fet_source] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] -= GMIN;
                 }
@@ -568,7 +568,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_drain]) {
-                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_drain] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_drain] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
@@ -577,7 +577,7 @@ void component_t::insert_all(double **G, double *X, netlist_t *netlist, uint8_t 
                 }
             }
             if (netlist->row[netlist_pos].node[fet_gate]) {
-                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += GMIN;
+                G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_gate] - 1] += 2*GMIN;
                 if (netlist->row[netlist_pos].node[fet_source]) {
                     G[netlist->row[netlist_pos].node[fet_gate] - 1][netlist->row[netlist_pos].node[fet_source] - 1] -= GMIN;
                 }
